@@ -1,0 +1,904 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FaceFare · Smart Transit OS</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:      #03080f;
+  --s1:      #091525;
+  --s2:      #0c1c30;
+  --s3:      #102038;
+  --s4:      #152844;
+  --border:  rgba(56,189,248,0.10);
+  --border2: rgba(56,189,248,0.20);
+  --border3: rgba(56,189,248,0.35);
+  --cyan:    #38bdf8;
+  --cyan2:   #0ea5e9;
+  --green:   #34d399;
+  --amber:   #fbbf24;
+  --red:     #f87171;
+  --purple:  #a78bfa;
+  --pink:    #f472b6;
+  --text:    #e2f0ff;
+  --text2:   #94b8d4;
+  --muted:   #3d6080;
+  --font:    'Outfit', sans-serif;
+  --mono:    'JetBrains Mono', monospace;
+  --r:       14px; --r2: 10px;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{font-size:13px;scroll-behavior:smooth}
+body{background:var(--bg);color:var(--text);font-family:var(--font);min-height:100vh;overflow-x:hidden}
+body::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
+  background-image:linear-gradient(rgba(56,189,248,.025) 1px,transparent 1px),linear-gradient(90deg,rgba(56,189,248,.025) 1px,transparent 1px);
+  background-size:40px 40px}
+body::after{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
+  background:radial-gradient(ellipse 80% 50% at 50% -10%,rgba(56,189,248,.07) 0%,transparent 60%)}
+
+/* ── Layout ── */
+.app{position:relative;z-index:1;display:grid;grid-template-rows:auto auto auto 1fr auto;gap:10px;padding:12px 14px 20px;max-width:1700px;margin:0 auto}
+
+/* ── Topbar ── */
+.topbar{display:flex;align-items:center;justify-content:space-between;
+  background:linear-gradient(110deg,#060f1e 0%,#0a1928 60%,#060f1e 100%);
+  border:1px solid var(--border2);border-radius:var(--r);padding:10px 18px;position:relative;}
+.topbar::before{content:'';position:absolute;inset:0;pointer-events:none;
+  background:radial-gradient(ellipse 50% 100% at 100% 50%,rgba(56,189,248,.05) 0%,transparent 70%)}
+.tb-left{display:flex;align-items:center;gap:14px}
+.logo-mark{width:36px;height:36px;background:linear-gradient(135deg,var(--cyan2),var(--cyan));
+  border-radius:9px;display:flex;align-items:center;justify-content:center;
+  font-size:15px;font-weight:900;color:#000;box-shadow:0 0 20px rgba(56,189,248,.35);flex-shrink:0}
+.logo-name{font-size:1.3rem;font-weight:800;line-height:1;
+  background:linear-gradient(90deg,#fff 10%,var(--cyan) 100%);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;letter-spacing:-.02em}
+.logo-sub{font-size:.62rem;font-family:var(--mono);color:var(--muted);letter-spacing:.18em;text-transform:uppercase}
+.tb-center{display:flex;gap:6px;position:relative;z-index:50;isolation:isolate;}
+.tb-right{display:flex;align-items:center;gap:12px}
+.mode-badge{display:flex;align-items:center;gap:6px;padding:5px 12px;border-radius:7px;
+  font-family:var(--mono);font-size:.72rem;font-weight:600;letter-spacing:.1em;transition:all .3s ease;border:1px solid}
+.mode-badge.entry{background:rgba(52,211,153,.1);border-color:rgba(52,211,153,.3);color:var(--green)}
+.mode-badge.exit {background:rgba(248,113,113,.1);border-color:rgba(248,113,113,.3);color:var(--red)}
+.mode-dot{width:6px;height:6px;border-radius:50%}
+.mode-badge.entry .mode-dot{background:var(--green);animation:glowG 1.5s infinite}
+.mode-badge.exit  .mode-dot{background:var(--red);  animation:glowR 1.5s infinite}
+.live-chip{display:flex;align-items:center;gap:5px;background:rgba(52,211,153,.08);
+  border:1px solid rgba(52,211,153,.2);border-radius:20px;padding:4px 10px;
+  font-family:var(--mono);font-size:.62rem;color:var(--green);letter-spacing:.12em}
+.live-dot{width:6px;height:6px;border-radius:50%;background:var(--green);animation:glowG 1.5s infinite}
+.clock-display{font-family:var(--mono);font-size:1rem;font-weight:600;color:var(--text2);letter-spacing:.06em}
+
+@keyframes glowG{0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(52,211,153,.6)}50%{opacity:.7;box-shadow:0 0 0 4px rgba(52,211,153,0)}}
+@keyframes glowR{0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(248,113,113,.6)}50%{opacity:.7;box-shadow:0 0 0 4px rgba(248,113,113,0)}}
+
+/* ── Buttons ── */
+.btn{display:inline-flex;align-items:center;gap:6px;background:var(--s2);border:1px solid var(--border2);
+  border-radius:8px;padding:6px 14px;font-family:var(--font);font-size:.78rem;font-weight:600;
+  color:var(--text2);cursor:pointer;letter-spacing:.03em;transition:all .18s ease;white-space:nowrap;user-select:none;
+  position:relative;z-index:50;pointer-events:auto !important;}
+.btn:hover{background:var(--s3);border-color:var(--border3);color:var(--text);transform:translateY(-1px)}
+.btn.b-entry{background:rgba(52,211,153,.1);border-color:rgba(52,211,153,.3);color:var(--green)}
+.btn.b-entry:hover{background:rgba(52,211,153,.18);box-shadow:0 0 16px rgba(52,211,153,.2)}
+.btn.b-exit {background:rgba(248,113,113,.1);border-color:rgba(248,113,113,.3);color:var(--red)}
+.btn.b-exit:hover {background:rgba(248,113,113,.18);box-shadow:0 0 16px rgba(248,113,113,.2)}
+.btn.b-cam-on {background:rgba(56,189,248,.12);border-color:var(--border3);color:var(--cyan)}
+.btn.b-cam-on:hover{box-shadow:0 0 18px rgba(56,189,248,.25)}
+.btn.b-cam-off{background:rgba(248,113,113,.1);border-color:rgba(248,113,113,.3);color:var(--red)}
+
+/* ── Metrics ── */
+.metrics{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}
+.mc{background:var(--s1);border:1px solid var(--border);border-radius:var(--r);padding:14px 16px;
+  position:relative;overflow:visible;transition:transform .2s,box-shadow .2s;cursor:default}
+.mc:hover{transform:translateY(-2px);box-shadow:0 8px 30px rgba(0,0,0,.4)}
+.mc::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;pointer-events:none}
+.mc-c::before{background:linear-gradient(90deg,var(--cyan),transparent)}
+.mc-g::before{background:linear-gradient(90deg,var(--green),transparent)}
+.mc-a::before{background:linear-gradient(90deg,var(--amber),transparent)}
+.mc-p::before{background:linear-gradient(90deg,var(--purple),transparent)}
+.mc-r::before{background:linear-gradient(90deg,var(--red),transparent)}
+.mc-bg{position:absolute;right:10px;top:50%;transform:translateY(-50%);font-size:2.4rem;opacity:.06;pointer-events:none}
+.mc-label{font-family:var(--mono);font-size:.58rem;color:var(--muted);letter-spacing:.18em;text-transform:uppercase;margin-bottom:6px}
+.mc-val{font-size:2rem;font-weight:800;line-height:1;transition:transform .2s}
+.mc-val.bump{animation:bump .3s ease}
+@keyframes bump{0%{transform:scale(1)}50%{transform:scale(1.15)}100%{transform:scale(1)}}
+.mc-sub{font-size:.65rem;color:var(--muted);margin-top:4px;font-family:var(--mono)}
+.cv{color:var(--cyan)} .gv{color:var(--green)} .av{color:var(--amber)} .pv{color:var(--purple)} .rv{color:var(--red)}
+
+/* ── Main 3-col grid ── */
+.main-grid{display:grid;grid-template-columns:480px 1fr 300px;gap:10px;min-height:520px}
+
+/* ── Panel base ── */
+.panel{background:var(--s1);border:1px solid var(--border);border-radius:var(--r);display:flex;flex-direction:column;overflow:hidden}
+.panel-head{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--border);flex-shrink:0}
+.ph-title{font-family:var(--mono);font-size:.62rem;color:var(--muted);letter-spacing:.2em;text-transform:uppercase;display:flex;align-items:center;gap:6px}
+.ph-dot{width:5px;height:5px;border-radius:50%}
+.panel-body{flex:1;padding:12px 14px;overflow:hidden}
+.panel-body.np{padding:0}
+
+/* ── Camera col ── */
+.cam-col{display:flex;flex-direction:column;gap:10px}
+.cam-viewport{position:relative;background:#010508;flex:1;overflow:hidden;min-height:300px;display:flex;align-items:center;justify-content:center}
+.cam-feed{width:100%;display:block;object-fit:cover}
+.cam-placeholder{display:flex;flex-direction:column;align-items:center;gap:10px;color:var(--muted);font-family:var(--mono);font-size:.75rem}
+.cam-placeholder .big-icon{font-size:3rem;opacity:.2}
+.scan-line{position:absolute;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,var(--cyan),transparent);opacity:0;top:0;animation:scanDown 3s linear infinite}
+.cam-viewport.active .scan-line{opacity:.6}
+@keyframes scanDown{0%{top:-2px;opacity:0}10%{opacity:.6}90%{opacity:.6}100%{top:100%;opacity:0}}
+.bracket{position:absolute;width:18px;height:18px;border-color:var(--cyan);border-style:solid;opacity:.5}
+.bracket.tl{top:8px;left:8px;border-width:2px 0 0 2px}
+.bracket.tr{top:8px;right:8px;border-width:2px 2px 0 0}
+.bracket.bl{bottom:8px;left:8px;border-width:0 0 2px 2px}
+.bracket.br{bottom:8px;right:8px;border-width:0 2px 2px 0}
+.recog-bar{position:absolute;bottom:0;left:0;right:0;background:linear-gradient(transparent,rgba(3,8,15,.9));padding:18px 14px 10px;display:flex;flex-wrap:wrap;gap:5px}
+.recog-tag{background:rgba(52,211,153,.15);border:1px solid rgba(52,211,153,.4);border-radius:999px;padding:3px 10px;font-family:var(--mono);font-size:.65rem;color:var(--green);animation:tagPop .3s ease}
+@keyframes tagPop{from{opacity:0;transform:scale(.8)}to{opacity:1;transform:scale(1)}}
+.tags-grid{display:flex;flex-wrap:wrap;gap:5px}
+.p-tag{display:inline-flex;align-items:center;gap:5px;background:rgba(56,189,248,.07);border:1px solid rgba(56,189,248,.18);border-radius:999px;padding:4px 10px;font-family:var(--mono);font-size:.68rem;color:var(--cyan);animation:tagPop .3s ease}
+.empty-tag{font-family:var(--mono);font-size:.72rem;color:var(--muted)}
+
+/* ── Analytics col ── */
+.analytics-col{display:flex;flex-direction:column;gap:10px}
+.chart-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;flex-shrink:0}
+.chart-wrap{position:relative;height:175px}
+
+/* ── Route ── */
+.route-visual{display:flex;align-items:center;padding:16px 20px 10px;position:relative}
+.route-line-bg{position:absolute;top:50%;left:20px;right:20px;height:3px;background:var(--s4);transform:translateY(-50%);z-index:0;border-radius:2px}
+.route-line-fill{position:absolute;top:50%;left:20px;height:3px;background:linear-gradient(90deg,var(--cyan2),var(--green));transform:translateY(-50%);z-index:1;border-radius:2px;transition:width .7s cubic-bezier(.34,1.56,.64,1)}
+.stops-flex{display:flex;justify-content:space-between;width:100%;position:relative;z-index:2}
+.s-node{display:flex;flex-direction:column;align-items:center;gap:6px}
+.s-dot{width:12px;height:12px;border-radius:50%;background:var(--s4);border:2px solid var(--muted);transition:all .4s ease}
+.s-dot.passed{background:var(--cyan2);border-color:var(--cyan2)}
+.s-dot.current{width:18px;height:18px;background:var(--green);border-color:var(--green);box-shadow:0 0 0 5px rgba(52,211,153,.15),0 0 16px rgba(52,211,153,.5);animation:stopPulse 2s infinite}
+@keyframes stopPulse{0%,100%{box-shadow:0 0 0 5px rgba(52,211,153,.15),0 0 16px rgba(52,211,153,.4)}50%{box-shadow:0 0 0 10px rgba(52,211,153,.04),0 0 26px rgba(52,211,153,.6)}}
+.s-label{font-family:var(--mono);font-size:.6rem;color:var(--muted);transition:color .4s;white-space:nowrap}
+.s-node.current .s-label{color:var(--green);font-weight:600}
+.s-node.passed  .s-label{color:var(--cyan2)}
+.bus-float{position:absolute;top:-26px;font-size:1.4rem;transition:left .7s cubic-bezier(.34,1.56,.64,1);filter:drop-shadow(0 0 8px rgba(56,189,248,.5))}
+.fare-strip{display:flex;gap:18px;padding:0 20px 12px;font-family:var(--mono);font-size:.62rem;color:var(--muted)}
+.fare-strip b{color:var(--amber)}
+
+/* ── Trip log ── */
+.log-scroll{overflow-y:auto;max-height:100%}
+.log-scroll::-webkit-scrollbar{width:3px}
+.log-scroll::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
+.log-table{width:100%;border-collapse:collapse;font-size:.72rem}
+.log-table th{font-family:var(--mono);font-size:.56rem;color:var(--muted);letter-spacing:.15em;text-transform:uppercase;padding:0 8px 6px;text-align:left;position:sticky;top:0;background:var(--s1)}
+.log-table td{padding:6px 8px;border-top:1px solid rgba(56,189,248,.04);font-family:var(--mono)}
+.log-table tr.new-row td{animation:rowIn .4s ease}
+@keyframes rowIn{from{opacity:0;background:rgba(56,189,248,.08)}to{opacity:1;background:transparent}}
+.ev-b{color:var(--green);font-weight:600}
+.ev-e{color:var(--amber);font-weight:600}
+.ev-d{color:var(--red);font-weight:600}
+.no-logs{font-family:var(--mono);font-size:.72rem;color:var(--muted);text-align:center;padding:24px 0}
+
+/* ── Wallet col ── */
+.wallet-col{display:flex;flex-direction:column;gap:10px}
+.wallet-list{display:flex;flex-direction:column;gap:8px;overflow-y:auto;padding:2px}
+.wallet-list::-webkit-scrollbar{width:3px}
+.wallet-list::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
+
+/* WALLET CARD — the fully fixed version */
+.w-card{background:var(--s2);border:1px solid var(--border);border-radius:var(--r2);padding:11px 13px;transition:all .25s ease;position:relative;overflow:visible}
+.w-card:hover{border-color:var(--border2);background:var(--s3)}
+.w-card.is-onboard{border-color:rgba(52,211,153,.3);background:rgba(52,211,153,.04)}
+.w-card.is-onboard::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--green);border-radius:2px 0 0 2px;pointer-events:none}
+.w-card.is-low::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--amber);border-radius:2px 0 0 2px;pointer-events:none}
+.w-card.is-empty::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--red);border-radius:2px 0 0 2px;pointer-events:none}
+
+.w-row1{display:flex;align-items:center;justify-content:space-between;margin-bottom:7px}
+.w-pid{font-weight:700;font-size:.85rem;color:var(--text);text-transform:capitalize}
+.w-chip{font-family:var(--mono);font-size:.55rem;letter-spacing:.1em;padding:2px 8px;border-radius:999px;font-weight:600;border:1px solid}
+.wc-active {background:rgba(52,211,153,.1); color:var(--green);  border-color:rgba(52,211,153,.25)}
+.wc-onboard{background:rgba(56,189,248,.1); color:var(--cyan);   border-color:rgba(56,189,248,.25)}
+.wc-low    {background:rgba(251,191,36,.1); color:var(--amber);  border-color:rgba(251,191,36,.25)}
+.wc-empty  {background:rgba(248,113,113,.1);color:var(--red);    border-color:rgba(248,113,113,.25)}
+.wc-declined{background:rgba(248,113,113,.1);color:var(--red);   border-color:rgba(248,113,113,.25)}
+
+.w-row2{display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:7px}
+
+/* ─── THE MAIN FIX: big balance number ─── */
+.w-balance{font-size:1.5rem;font-weight:800;line-height:1;font-family:var(--mono)}
+.w-balance.ok     {color:var(--green)}
+.w-balance.low    {color:var(--amber)}
+.w-balance.empty  {color:var(--red)}
+.w-balance.deduct {animation:deductFlash .5s ease}
+@keyframes deductFlash{0%{transform:scale(1)}30%{transform:scale(.88);filter:brightness(1.4)}100%{transform:scale(1)}}
+
+.w-meta{display:flex;flex-direction:column;align-items:flex-end;gap:2px}
+.w-trips{font-family:var(--mono);font-size:.6rem;color:var(--muted)}
+.w-spent{font-family:var(--mono);font-size:.6rem;color:var(--muted)}
+
+.w-bar-track{height:4px;background:var(--s4);border-radius:2px;overflow:hidden}
+.w-bar-fill{height:100%;border-radius:2px;transition:width .6s ease,background .3s}
+
+/* Fare matrix */
+.fare-est{background:var(--s2);border:1px solid var(--border);border-radius:var(--r2);padding:12px 14px;flex-shrink:0}
+.fe-title{font-family:var(--mono);font-size:.6rem;color:var(--muted);letter-spacing:.18em;text-transform:uppercase;margin-bottom:10px}
+.fe-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:4px}
+.fe-cell{background:var(--s3);border-radius:6px;padding:7px 4px;text-align:center;border:1px solid transparent;transition:all .2s}
+.fe-dist{font-family:var(--mono);font-size:.58rem;color:var(--muted)}
+.fe-fare{font-family:var(--mono);font-size:.8rem;font-weight:700;color:var(--amber)}
+
+/* ── Bottom analytics ── */
+.analytics-row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+.chart-body{padding:10px 14px 14px}
+
+/* ── Toast ── */
+.toast-stack{position:fixed;bottom:20px;right:20px;display:flex;flex-direction:column-reverse;gap:6px;z-index:1000}
+.toast{display:flex;align-items:center;gap:8px;padding:9px 14px;border-radius:9px;font-family:var(--mono);font-size:.72rem;font-weight:500;backdrop-filter:blur(10px);animation:toastIn .3s ease,toastOut .3s ease 3.7s forwards;min-width:240px}
+.toast.board  {background:rgba(52,211,153,.15);border:1px solid rgba(52,211,153,.3);color:var(--green)}
+.toast.exit   {background:rgba(251,191,36,.15); border:1px solid rgba(251,191,36,.3); color:var(--amber)}
+.toast.declined{background:rgba(248,113,113,.15);border:1px solid rgba(248,113,113,.3);color:var(--red)}
+@keyframes toastIn {from{opacity:0;transform:translateX(20px)}to{opacity:1;transform:translateX(0)}}
+@keyframes toastOut{from{opacity:1}to{opacity:0;transform:translateX(20px)}}
+
+::-webkit-scrollbar{width:4px;height:4px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
+
+/* ══ CONTROL BAR — standalone, zero inheritance from topbar ══ */
+.ctrl-bar {
+  display: flex;
+  gap: 6px;
+  padding: 10px 12px;
+  background: #060d18;
+  border-top: 1px solid rgba(56,189,248,0.15);
+  flex-wrap: wrap;
+}
+.ctrl-btn {
+  flex: 1;
+  min-width: 70px;
+  padding: 9px 8px;
+  border-radius: 8px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  border: 2px solid;
+  background: transparent;
+  transition: background 0.15s, transform 0.1s;
+  /* NO z-index games, NO position tricks — just a plain button */
+}
+.ctrl-btn:hover  { opacity: 0.85; }
+.ctrl-btn:active { transform: scale(0.95); }
+.ctrl-btn.green  { color: #34d399; border-color: #34d399; }
+.ctrl-btn.green:hover  { background: rgba(52,211,153,0.15); }
+.ctrl-btn.red    { color: #f87171; border-color: #f87171; }
+.ctrl-btn.red:hover    { background: rgba(248,113,113,0.15); }
+.ctrl-btn.blue   { color: #38bdf8; border-color: #38bdf8; }
+.ctrl-btn.blue:hover   { background: rgba(56,189,248,0.15); }
+.ctrl-btn.yellow { color: #fbbf24; border-color: #fbbf24; }
+.ctrl-btn.yellow:hover { background: rgba(251,191,36,0.15); }
+.ctrl-btn.active-entry { background: rgba(52,211,153,0.2) !important; }
+.ctrl-btn.active-exit  { background: rgba(248,113,113,0.2) !important; }
+.ctrl-btn.cam-live     { color: #f87171; border-color: #f87171; }
+
+</style>
+</head>
+<body>
+
+<div class="toast-stack" id="toastStack"></div>
+
+<div class="app">
+
+  <!-- ══ TOPBAR ══ -->
+  <header class="topbar">
+    <div class="tb-left">
+      <div class="logo-mark">FF</div>
+      <div>
+        <div class="logo-name">FaceFare</div>
+        <div class="logo-sub">Smart Transit OS · v2.0</div>
+      </div>
+    </div>
+    <!-- buttons moved to camera panel -->
+    <div class="tb-right">
+      <div class="mode-badge entry" id="mode-badge">
+        <span class="mode-dot"></span><span id="mode-text">ENTRY</span>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px">
+        <div class="live-chip"><span class="live-dot"></span>ONLINE</div>
+        <div class="clock-display" id="clock">--:--:--</div>
+      </div>
+    </div>
+  </header>
+
+  <!-- ══ METRICS ══ -->
+  <div class="metrics">
+    <div class="mc mc-c"><div class="mc-bg">👥</div><div class="mc-label">Onboard</div><div class="mc-val cv" id="m-onboard">0</div><div class="mc-sub">passengers in transit</div></div>
+    <div class="mc mc-g"><div class="mc-bg">₹</div>  <div class="mc-label">Revenue</div> <div class="mc-val gv" id="m-revenue">₹0</div><div class="mc-sub">session total</div></div>
+    <div class="mc mc-a"><div class="mc-bg">🎫</div> <div class="mc-label">Trips Done</div><div class="mc-val av" id="m-trips">0</div><div class="mc-sub">exits completed</div></div>
+    <div class="mc mc-p"><div class="mc-bg">🚏</div> <div class="mc-label">Current Stop</div><div class="mc-val pv" id="m-stop" style="font-size:1.3rem">—</div><div class="mc-sub" id="m-stop-idx">stop 1 of {{ stops|length }}</div></div>
+    <div class="mc mc-r"><div class="mc-bg">⚡</div> <div class="mc-label">Avg Fare</div><div class="mc-val rv" id="m-avg">₹0</div><div class="mc-sub">per trip</div></div>
+  </div>
+
+  <!-- ══ MAIN GRID ══ -->
+  <div class="main-grid">
+
+    <!-- ── Camera + Controls + Onboard ── -->
+    <div class="cam-col">
+      <div class="panel" style="flex:1">
+        <div class="panel-head">
+          <div class="ph-title">
+            <span class="ph-dot" id="cam-dot" style="background:var(--red)"></span>
+            LIVE RECOGNITION FEED
+          </div>
+          <span style="font-family:var(--mono);font-size:.62rem;color:var(--muted)" id="cam-status-txt">OFFLINE</span>
+        </div>
+        <div class="cam-viewport" id="cam-viewport">
+          <div class="scan-line"></div>
+          <div class="bracket tl"></div><div class="bracket tr"></div>
+          <div class="bracket bl"></div><div class="bracket br"></div>
+          <div class="cam-placeholder" id="cam-placeholder">
+            <div class="big-icon">📷</div>
+            <div>Press START CAMERA to begin</div>
+          </div>
+          <img id="cam-feed" class="cam-feed" style="display:none" alt="feed">
+          <div class="recog-bar" id="recog-bar"></div>
+        </div>
+        <!-- ══ CONTROL BUTTONS — directly under camera feed, no CSS overlap possible ══ -->
+        <div class="ctrl-bar">
+          <button class="ctrl-btn green"  id="btn-entry">⬆ ENTRY</button>
+          <button class="ctrl-btn red"    id="btn-exit">⬇ EXIT</button>
+          <button class="ctrl-btn blue"   id="btn-prev">◀ PREV</button>
+          <button class="ctrl-btn blue"   id="btn-next">▶ NEXT</button>
+          <button class="ctrl-btn yellow" id="btn-cam">▶ CAMERA</button>
+        </div>
+      </div>
+
+      <div class="panel" style="flex-shrink:0">
+        <div class="panel-head">
+          <div class="ph-title"><span class="ph-dot" style="background:var(--cyan)"></span>PASSENGERS ONBOARD</div>
+          <span style="font-family:var(--mono);font-size:.65rem;color:var(--cyan)" id="onboard-count">0</span>
+        </div>
+        <div class="panel-body">
+          <div class="tags-grid" id="onboard-tags"><span class="empty-tag">No passengers onboard yet</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Analytics + Route + Log ── -->
+    <div class="analytics-col">
+      <div class="chart-row">
+        <div class="panel" style="padding:10px 14px 14px">
+          <div class="ph-title" style="margin-bottom:8px"><span class="ph-dot" style="background:var(--amber)"></span>REVENUE OVER TIME</div>
+          <div class="chart-wrap"><canvas id="cRevLine"></canvas></div>
+        </div>
+        <div class="panel" style="padding:10px 14px 14px">
+          <div class="ph-title" style="margin-bottom:8px"><span class="ph-dot" style="background:var(--purple)"></span>BOARDINGS PER STOP</div>
+          <div class="chart-wrap"><canvas id="cBoardStop"></canvas></div>
+        </div>
+      </div>
+
+      <!-- Route -->
+      <div class="panel" style="flex-shrink:0">
+        <div class="panel-head">
+          <div class="ph-title"><span class="ph-dot" style="background:var(--green)"></span>BUS ROUTE</div>
+          <span style="font-family:var(--mono);font-size:.6rem;color:var(--muted)">Base ₹{{ base_fare }} + ₹{{ per_stop_rate }}/stop</span>
+        </div>
+        <div class="route-visual" id="route-visual">
+          <div class="route-line-bg"></div>
+          <div class="route-line-fill" id="route-fill"></div>
+          <div class="stops-flex" id="stops-flex"></div>
+          <div class="bus-float" id="bus-float">🚌</div>
+        </div>
+        <div class="fare-strip">
+          {% for i in range(1, stops|length) %}
+          <div>{{ i }} stop{{ 's' if i > 1 else '' }}: <b>₹{{ base_fare + i * per_stop_rate }}</b></div>
+          {% endfor %}
+        </div>
+      </div>
+
+      <!-- Log -->
+      <div class="panel" style="flex:1;min-height:0">
+        <div class="panel-head">
+          <div class="ph-title"><span class="ph-dot" style="background:var(--cyan)"></span>TRIP LOG</div>
+          <span style="font-family:var(--mono);font-size:.62rem;color:var(--muted)" id="log-count">0 events</span>
+        </div>
+        <div class="panel-body np" style="overflow:hidden;max-height:200px">
+          <div class="log-scroll" style="max-height:200px;padding:0 14px">
+            <table class="log-table">
+              <thead><tr><th>Time</th><th>Passenger</th><th>Event</th><th>Stop</th><th>Dist</th><th>Fare</th></tr></thead>
+              <tbody id="log-body"></tbody>
+            </table>
+            <div class="no-logs" id="no-logs">No trips yet — activate camera to begin</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Wallet Sidebar ── -->
+    <div class="wallet-col">
+      <div class="panel" style="flex:1">
+        <div class="panel-head">
+          <div class="ph-title"><span class="ph-dot" style="background:var(--green)"></span>WALLET BALANCES</div>
+          <span style="font-family:var(--mono);font-size:.6rem;color:var(--muted)" id="wallet-total">₹0 total</span>
+        </div>
+        <div class="panel-body" style="overflow-y:auto;max-height:380px">
+          <div class="wallet-list" id="wallet-list">
+            <!-- populated by JS — always shows plain ₹number -->
+          </div>
+        </div>
+      </div>
+
+      <div class="fare-est">
+        <div class="fe-title">Fare Matrix</div>
+        <div class="fe-grid" id="fare-grid"></div>
+      </div>
+
+      <div class="panel" style="flex-shrink:0">
+        <div class="panel-head">
+          <div class="ph-title"><span class="ph-dot" style="background:var(--pink)"></span>FARE DISTRIBUTION</div>
+        </div>
+        <div style="padding:10px 14px 14px">
+          <div style="position:relative;height:130px"><canvas id="cPie"></canvas></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ BOTTOM ANALYTICS ══ -->
+  <div class="analytics-row">
+    <div class="panel chart-panel">
+      <div class="panel-head"><div class="ph-title"><span class="ph-dot" style="background:var(--green)"></span>REVENUE BY PASSENGER</div></div>
+      <div class="chart-body"><div style="height:155px"><canvas id="cBar"></canvas></div></div>
+    </div>
+    <div class="panel chart-panel">
+      <div class="panel-head"><div class="ph-title"><span class="ph-dot" style="background:var(--amber)"></span>FARE TREND (LAST 10)</div></div>
+      <div class="chart-body"><div style="height:155px"><canvas id="cFareLine"></canvas></div></div>
+    </div>
+    <div class="panel chart-panel">
+      <div class="panel-head"><div class="ph-title"><span class="ph-dot" style="background:var(--purple)"></span>SESSION OVERVIEW</div></div>
+      <div class="chart-body" style="display:flex;align-items:center;gap:14px">
+        <div style="position:relative;height:125px;width:125px;flex-shrink:0"><canvas id="cDonut"></canvas></div>
+        <div id="session-stats" style="display:flex;flex-direction:column;gap:8px;font-family:var(--mono);font-size:.7rem"></div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /.app -->
+
+<script>
+// ── Jinja config (safe to read before DOM ready) ──────────────
+const STOPS     = {{ stops | tojson }};
+const BASE_FARE = {{ base_fare }};
+const PER_STOP  = {{ per_stop_rate }};
+const MAX_BAL   = 200;
+
+// ── Init immediately — script is at end of body, DOM is ready ──
+
+  // ══ STATE ════════════════════════════════════════════════════
+  let camOn        = false;
+  let socketConnected = false;
+  let prevWallets  = {};
+  let prevLogLen   = 0;
+  let passengerRev = {};
+  let tripCounts   = {};
+  const _prev      = {};
+
+  // ══ BUTTON WIRING — direct getElementById, no delegation needed ══
+  (function wireButtons() {
+    var btnEntry = document.getElementById('btn-entry');
+    var btnExit  = document.getElementById('btn-exit');
+    var btnPrev  = document.getElementById('btn-prev');
+    var btnNext  = document.getElementById('btn-next');
+    var btnCam   = document.getElementById('btn-cam');
+
+    if (!btnEntry) { console.error('btn-entry NOT FOUND'); return; }
+    console.log('[Init] All 5 buttons found, attaching listeners...');
+
+    btnEntry.onclick = function() { sendControl('entry');    console.log('entry clicked'); };
+    btnExit.onclick  = function() { sendControl('exit');     console.log('exit clicked'); };
+    btnPrev.onclick  = function() { sendControl('prev_stop');console.log('prev clicked'); };
+    btnNext.onclick  = function() { sendControl('next_stop');console.log('next clicked'); };
+    btnCam.onclick   = function() { toggleCamera();          console.log('cam clicked'); };
+
+    console.log('[Init] All button onclick handlers attached OK');
+  })();
+
+  // ══ CONTROL HELPERS ═════════════════════════════════════════
+  function sendControl(action) {
+    fetch('/control', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action })
+    })
+    .then(r => r.json())
+    .then(d => console.log('[Control]', action, d))
+    .catch(e => { console.error('[Control] fetch failed:', e); showToast('Control failed: ' + e.message, 'declined'); });
+  }
+
+  function toggleCamera() {
+    if (!socketConnected) {
+      showToast('Not connected to server — refresh the page', 'declined');
+      return;
+    }
+    const btn = document.getElementById('btn-cam');
+    btn.disabled = true;
+    setTimeout(() => { btn.disabled = false; }, 3000);
+    console.log('[Camera] toggling, camOn=', camOn);
+    socket.emit(camOn ? 'stop_camera' : 'start_camera');
+  }
+
+  // ══ CHART.JS ════════════════════════════════════════════════
+  Chart.defaults.color       = '#3d6080';
+  Chart.defaults.font.family = "'JetBrains Mono',monospace";
+  Chart.defaults.font.size   = 10;
+
+  const gridStyle  = { color: 'rgba(56,189,248,.06)' };
+  const tickStyle  = { color: '#3d6080', maxRotation: 0 };
+  const COLORS     = ['rgba(56,189,248,.75)','rgba(52,211,153,.75)','rgba(251,191,36,.75)',
+                      'rgba(167,139,250,.75)','rgba(248,113,113,.75)','rgba(244,114,182,.75)'];
+
+  function safeChart(id, config) {
+    const el = document.getElementById(id);
+    if (!el) { console.warn('[Chart] canvas not found:', id); return null; }
+    try { return new Chart(el, config); }
+    catch(e) { console.error('[Chart] init error for', id, e); return null; }
+  }
+
+  function mkLine(id, borderColor, bgColor) {
+    return safeChart(id, {
+      type: 'line',
+      data: { labels: [], datasets: [{ data: [], borderColor, backgroundColor: bgColor,
+        borderWidth: 2, pointRadius: 3, pointBackgroundColor: borderColor, fill: true, tension: .4 }] },
+      options: { responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: { x: { grid: gridStyle, ticks: tickStyle },
+                  y: { grid: gridStyle, ticks: { ...tickStyle, callback: v => '₹'+v } } } }
+    });
+  }
+
+  const cRevLine   = mkLine('cRevLine',  '#fbbf24', 'rgba(251,191,36,.08)');
+  const cFareLine  = mkLine('cFareLine', '#38bdf8', 'rgba(56,189,248,.07)');
+
+  const cBoardStop = safeChart('cBoardStop', {
+    type: 'bar',
+    data: { labels: STOPS, datasets: [{ data: STOPS.map(()=>0),
+      backgroundColor: STOPS.map((_,i)=>`hsla(${200+i*25},80%,60%,.7)`), borderRadius: 5 }] },
+    options: { responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: { x: { grid: { display: false }, ticks: tickStyle },
+                y: { grid: gridStyle, ticks: { ...tickStyle, stepSize: 1 } } } }
+  });
+
+  const cBar = safeChart('cBar', {
+    type: 'bar',
+    data: { labels: [], datasets: [{ data: [], backgroundColor: [], borderRadius: 6 }] },
+    options: { responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: { x: { grid: { display: false }, ticks: tickStyle },
+                y: { grid: gridStyle, ticks: { ...tickStyle, callback: v => '₹'+v } } } }
+  });
+
+  const cDonut = safeChart('cDonut', {
+    type: 'doughnut',
+    data: { labels: ['Boards','Exits'],
+      datasets: [{ data: [0,0],
+        backgroundColor: ['rgba(56,189,248,.7)','rgba(251,191,36,.7)'],
+        borderColor:     ['rgba(56,189,248,.3)','rgba(251,191,36,.3)'],
+        borderWidth: 1, hoverOffset: 4 }] },
+    options: { responsive: true, maintainAspectRatio: false, cutout: '65%',
+      plugins: { legend: { display: false } } }
+  });
+
+  const cPie = safeChart('cPie', {
+    type: 'doughnut',
+    data: { labels: [], datasets: [{ data: [], backgroundColor: [], borderColor: [], borderWidth: 1 }] },
+    options: { responsive: true, maintainAspectRatio: false, cutout: '55%',
+      plugins: { legend: { display: false } } }
+  });
+
+  // ══ BUILD STATIC HTML ELEMENTS ══════════════════════════════
+  document.getElementById('stops-flex').innerHTML =
+    STOPS.map((s,i) => `<div class="s-node" id="sn-${i}">
+      <div class="s-dot" id="sd-${i}"></div>
+      <div class="s-label">${s}</div></div>`).join('');
+
+  (function buildFareMatrix() {
+    let html = '';
+    for (let d = 1; d <= Math.min(STOPS.length-1, 4); d++)
+      html += `<div class="fe-cell"><div class="fe-dist">${d} stop${d>1?'s':''}</div>
+        <div class="fe-fare">₹${BASE_FARE + d * PER_STOP}</div></div>`;
+    document.getElementById('fare-grid').innerHTML = html;
+  })();
+
+  // ══ SOCKET.IO ═══════════════════════════════════════════════
+  const socket = io({ transports: ['websocket','polling'], reconnection: true, reconnectionDelay: 1000 });
+
+  socket.on('connect', () => {
+    socketConnected = true;
+    console.log('[Socket] Connected:', socket.id);
+    setConnUI(true);
+  });
+  socket.on('disconnect', reason => {
+    socketConnected = false;
+    console.warn('[Socket] Disconnected:', reason);
+    setConnUI(false);
+    setCamUI(false);
+  });
+  socket.on('connect_error', err => {
+    socketConnected = false;
+    console.error('[Socket] Error:', err.message);
+    setConnUI(false);
+  });
+  socket.on('camera_error', ({ msg }) => {
+    console.error('[Camera] Error:', msg);
+    showToast('⚠️ ' + msg, 'declined');
+    setCamUI(false);
+  });
+  socket.on('camera_status', ({ running }) => setCamUI(running));
+  socket.on('frame', ({ img }) => {
+    const feed = document.getElementById('cam-feed');
+    feed.src = 'data:image/jpeg;base64,' + img;
+    feed.style.display = 'block';
+    document.getElementById('cam-placeholder').style.display = 'none';
+  });
+  socket.on('update', data => {
+    try {
+      updateMetrics(data);
+      updateModeUI(data.mode);
+      updateOnboard(data.onboard);
+      updateWallets(data.wallets, data.onboard);
+      updateLogs(data.logs);
+      updateRoute(data.current_stop);
+      updateRecog(data.recognized || []);
+      updateCharts(data);
+      showToasts(data.logs);
+    } catch(e) { console.error('[update] handler error:', e); }
+  });
+
+  // ══ UI HELPERS ═══════════════════════════════════════════════
+  function setConnUI(ok) {
+    const chip = document.querySelector('.live-chip');
+    if (!chip) return;
+    chip.style.color = ok ? 'var(--green)' : 'var(--red)';
+    chip.innerHTML = ok
+      ? '<span class="live-dot"></span>ONLINE'
+      : '<span class="live-dot" style="background:var(--red)"></span>OFFLINE';
+  }
+
+  function setCamUI(running) {
+    camOn = running;
+    var dot = document.getElementById('cam-dot');
+    var txt = document.getElementById('cam-status-txt');
+    var btn = document.getElementById('btn-cam');
+    var vp  = document.getElementById('cam-viewport');
+    if (dot) {
+      dot.style.background = running ? '#34d399' : '#f87171';
+      dot.style.animation  = running ? 'glowG 1.5s infinite' : 'none';
+    }
+    if (txt) {
+      txt.textContent = running ? 'LIVE' : 'OFFLINE';
+      txt.style.color = running ? '#34d399' : '#3d6080';
+    }
+    if (btn) {
+      btn.textContent = running ? '⏹ STOP' : '▶ CAMERA';
+      btn.className   = running ? 'ctrl-btn cam-live' : 'ctrl-btn yellow';
+      btn.disabled    = false;
+    }
+    if (vp) vp.classList.toggle('active', running);
+    var feed = document.getElementById('cam-feed');
+    var ph   = document.getElementById('cam-placeholder');
+    if (!running && feed) feed.style.display = 'none';
+    if (!running && ph)   ph.style.display   = 'flex';
+  }
+
+  function showToast(msg, type) {
+    const stack = document.getElementById('toastStack');
+    const el = document.createElement('div');
+    el.className = 'toast ' + type;
+    el.textContent = msg;
+    stack.appendChild(el);
+    setTimeout(() => el.remove(), 4500);
+  }
+
+  function setVal(id, val) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const s = String(val);
+    if (_prev[id] === s) return;
+    _prev[id] = s;
+    el.textContent = val;
+    el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump');
+  }
+
+  // ══ DATA UPDATERS ════════════════════════════════════════════
+  function updateMetrics(data) {
+    const exits   = (data.logs || []).filter(l => l.event === 'EXIT');
+    const avgFare = exits.length ? Math.round(exits.reduce((s,l)=>s+(l.fare||0),0)/exits.length) : 0;
+    setVal('m-onboard', data.onboard.length);
+    setVal('m-revenue', '₹' + data.revenue);
+    setVal('m-trips',   exits.length);
+    setVal('m-avg',     '₹' + avgFare);
+    const stopEl = document.getElementById('m-stop');
+    const idxEl  = document.getElementById('m-stop-idx');
+    if (stopEl) stopEl.textContent = data.stop_name;
+    if (idxEl)  idxEl.textContent  = 'stop ' + (data.current_stop+1) + ' of ' + STOPS.length;
+  }
+
+  function updateModeUI(mode) {
+    var isEntry = mode === 'ENTRY';
+    var badge   = document.getElementById('mode-badge');
+    if (badge) badge.className = 'mode-badge ' + (isEntry ? 'entry' : 'exit');
+    var mt = document.getElementById('mode-text');
+    if (mt) mt.textContent = mode;
+    var be = document.getElementById('btn-entry');
+    var bx = document.getElementById('btn-exit');
+    if (be) be.className = isEntry ? 'ctrl-btn green active-entry' : 'ctrl-btn green';
+    if (bx) bx.className = !isEntry ? 'ctrl-btn red active-exit'  : 'ctrl-btn red';
+  }
+
+  function updateOnboard(onboard) {
+    const cnt  = document.getElementById('onboard-count');
+    const wrap = document.getElementById('onboard-tags');
+    if (cnt)  cnt.textContent  = onboard.length;
+    if (wrap) wrap.innerHTML   = onboard.length
+      ? onboard.map(p => `<span class="p-tag">👤 ${p}</span>`).join('')
+      : '<span class="empty-tag">No passengers onboard yet</span>';
+  }
+
+  function updateWallets(wallets, onboard) {
+    const list = document.getElementById('wallet-list');
+    const totEl = document.getElementById('wallet-total');
+    if (!list || !wallets) return;
+    let total = 0;
+
+    const html = Object.entries(wallets).map(([pid, raw]) => {
+      const bal = (typeof raw === 'object' && raw !== null) ? (raw.balance ?? 0) : Number(raw);
+      total += bal;
+      const isOnboard = onboard.includes(pid);
+      const isLow     = !isOnboard && bal > 0 && bal < 30;
+      const isEmpty   = bal <= 0;
+      const cardCls   = isOnboard ? 'w-card is-onboard' : isLow ? 'w-card is-low' : isEmpty ? 'w-card is-empty' : 'w-card';
+      const [chipCls, chipTxt] = isOnboard ? ['wc-onboard','ONBOARD'] : isEmpty ? ['wc-empty','EMPTY'] : isLow ? ['wc-low','LOW BAL'] : ['wc-active','ACTIVE'];
+      const balCls    = isEmpty ? 'w-balance empty' : isLow ? 'w-balance low' : 'w-balance ok';
+      const prev      = prevWallets[pid];
+      const flash     = (prev !== undefined && bal < prev) ? ' deduct' : '';
+      const barPct    = Math.max(0, Math.min(100, (bal/MAX_BAL)*100));
+      const barColor  = isEmpty ? 'var(--red)' : isLow ? 'var(--amber)' : 'var(--green)';
+      const trips     = tripCounts[pid] || 0;
+      const spent     = passengerRev[pid] || 0;
+      return `<div class="${cardCls}">
+        <div class="w-row1"><div class="w-pid">${pid}</div><div class="w-chip ${chipCls}">${chipTxt}</div></div>
+        <div class="w-row2">
+          <div class="${balCls}${flash}">₹${bal}</div>
+          <div class="w-meta"><div class="w-trips">${trips} trip${trips!==1?'s':''}</div><div class="w-spent">₹${spent} spent</div></div>
+        </div>
+        <div class="w-bar-track"><div class="w-bar-fill" style="width:${barPct}%;background:${barColor}"></div></div>
+      </div>`;
+    }).join('');
+
+    list.innerHTML = html;
+    if (totEl) totEl.textContent = '₹' + total + ' total';
+    prevWallets = { ...wallets };
+  }
+
+  function updateLogs(logs) {
+    const body   = document.getElementById('log-body');
+    const noLogs = document.getElementById('no-logs');
+    const cnt    = document.getElementById('log-count');
+    if (!body) return;
+    if (cnt) cnt.textContent = (logs.length) + ' events';
+    noLogs.style.display = logs.length ? 'none' : 'block';
+    const isNew = logs.length > prevLogLen;
+    prevLogLen  = logs.length;
+    passengerRev = {}; tripCounts = {};
+    logs.filter(l => l.event==='EXIT' && l.fare && l.fare!=='—').forEach(l => {
+      passengerRev[l.passenger] = (passengerRev[l.passenger]||0) + l.fare;
+      tripCounts[l.passenger]   = (tripCounts[l.passenger]  ||0) + 1;
+    });
+    body.innerHTML = [...logs].reverse().slice(0,40).map((l,i) => {
+      const ec  = l.event==='BOARD'?'ev-b':l.event==='EXIT'?'ev-e':'ev-d';
+      const fstr= l.fare!=='—'?'₹'+l.fare:'—';
+      return `<tr class="${i===0&&isNew?'new-row':''}">
+        <td style="color:var(--muted)">${l.time}</td>
+        <td style="color:var(--text2)">${l.passenger}</td>
+        <td class="${ec}">${l.event}</td>
+        <td style="color:var(--muted)">${l.stop}</td>
+        <td style="color:var(--text2)">${l.distance}</td>
+        <td style="color:var(--green)">${fstr}</td></tr>`;
+    }).join('');
+  }
+
+  function updateRoute(idx) {
+    STOPS.forEach((_,i) => {
+      const d = document.getElementById('sd-'+i);
+      const n = document.getElementById('sn-'+i);
+      if (!d) return;
+      d.className = 's-dot'  + (i<idx?' passed':i===idx?' current':'');
+      n.className = 's-node' + (i===idx?' current':i<idx?' passed':'');
+    });
+    const pct = idx===0 ? 0 : (idx/(STOPS.length-1))*100;
+    const fill = document.getElementById('route-fill');
+    if (fill) fill.style.width = pct + '%';
+    const flex = document.getElementById('stops-flex');
+    const fe   = document.getElementById('bus-float');
+    if (flex && fe) {
+      const nodes = flex.querySelectorAll('.s-node');
+      if (nodes[idx]) {
+        const fr = flex.getBoundingClientRect();
+        const nr = nodes[idx].getBoundingClientRect();
+        fe.style.left = (nr.left - fr.left + nr.width/2 - 14) + 'px';
+      }
+    }
+  }
+
+  function updateRecog(recognized) {
+    const bar = document.getElementById('recog-bar');
+    if (bar) bar.innerHTML = recognized.map(p=>`<span class="recog-tag">✓ ${p}</span>`).join('');
+  }
+
+  function updateCharts(data) {
+    const logs   = data.logs || [];
+    const exits  = logs.filter(l=>l.event==='EXIT'&&l.fare&&l.fare!=='—');
+    const boards = logs.filter(l=>l.event==='BOARD');
+    const pids   = Object.keys(passengerRev);
+
+    if (cRevLine) {
+      const revSeries = exits.map((_,i)=>exits.slice(0,i+1).reduce((s,x)=>s+x.fare,0));
+      cRevLine.data.labels           = exits.slice(-8).map(l=>l.time);
+      cRevLine.data.datasets[0].data = revSeries.slice(-8);
+      cRevLine.update('none');
+    }
+    if (cBoardStop) {
+      const bps={}; STOPS.forEach(s=>bps[s]=0);
+      boards.forEach(l=>{ if(bps[l.stop]!==undefined) bps[l.stop]++; });
+      cBoardStop.data.datasets[0].data = STOPS.map(s=>bps[s]);
+      cBoardStop.update('none');
+    }
+    if (cBar && pids.length) {
+      cBar.data.labels                       = pids;
+      cBar.data.datasets[0].data             = pids.map(p=>passengerRev[p]);
+      cBar.data.datasets[0].backgroundColor  = pids.map((_,i)=>COLORS[i%COLORS.length]);
+      cBar.update('none');
+    }
+    if (cFareLine) {
+      const l10 = exits.slice(-10);
+      cFareLine.data.labels           = l10.map((_,i)=>'T'+(exits.length-l10.length+i+1));
+      cFareLine.data.datasets[0].data = l10.map(l=>l.fare);
+      cFareLine.update('none');
+    }
+    if (cDonut) { cDonut.data.datasets[0].data=[boards.length,exits.length]; cDonut.update('none'); }
+    if (cPie && pids.length) {
+      cPie.data.labels                       = pids;
+      cPie.data.datasets[0].data             = pids.map(p=>passengerRev[p]);
+      cPie.data.datasets[0].backgroundColor  = pids.map((_,i)=>COLORS[i%COLORS.length]);
+      cPie.data.datasets[0].borderColor      = pids.map((_,i)=>COLORS[i%COLORS.length].replace('.75','.3'));
+      cPie.update('none');
+    }
+    const ss = document.getElementById('session-stats');
+    if (ss) ss.innerHTML = `
+      <div style="color:var(--muted)">Boards  <span style="color:var(--cyan);font-weight:700">${boards.length}</span></div>
+      <div style="color:var(--muted)">Exits   <span style="color:var(--amber);font-weight:700">${exits.length}</span></div>
+      <div style="color:var(--muted)">Revenue <span style="color:var(--green);font-weight:700">₹${data.revenue}</span></div>
+      <div style="color:var(--muted)">Onboard <span style="color:var(--purple);font-weight:700">${data.onboard.length}</span></div>`;
+  }
+
+  function showToasts(logs) {
+    if (!logs.length) return;
+    const newest = logs[logs.length-1];
+    if (!newest) return;
+    if (newest.event==='BOARD')
+      showToast('⬆ ' + newest.passenger + ' boarded at ' + newest.stop, 'board');
+    else if (newest.event==='EXIT')
+      showToast('⬇ ' + newest.passenger + ' exited · ₹' + newest.fare, 'exit');
+    else if (newest.event==='DECLINED')
+      showToast('⛔ ' + newest.passenger + ' — insufficient balance', 'declined');
+  }
+
+  // ══ CLOCK ════════════════════════════════════════════════════
+  setInterval(() => {
+    const cl = document.getElementById('clock');
+    if (cl) cl.textContent = new Date().toTimeString().slice(0,8);
+  }, 1000);
+
+// ── end init ──
+</script>
+</body>
+</html>
