@@ -3,7 +3,12 @@
 # Wallet operations — works with both storage formats:
 #   {"srivisnu": {"balance": 100}}   ← dict with nested key
 #   {"srivisnu": 100}                ← flat int (legacy)
+#
+# Balance changes are applied to the in-memory `passengers` dict
+# AND persisted to the database, so they survive an app restart.
 # ─────────────────────────────────────────────────────────────────
+
+from database.models import update_balance as _persist_balance
 
 
 def _get(passengers: dict, pid: str) -> int | float:
@@ -28,15 +33,20 @@ def deduct_balance(passengers: dict, pid: str, amount: int | float) -> bool:
     """
     Deduct *amount* from *pid*'s wallet.
     Returns True on success, False if funds are insufficient (no deduction made).
+    Persists the new balance to the database.
     """
     current = _get(passengers, pid)
     if current < amount:
         return False
-    _set(passengers, pid, current - amount)
+    new_balance = current - amount
+    _set(passengers, pid, new_balance)
+    _persist_balance(pid, new_balance)
     return True
 
 
 def top_up(passengers: dict, pid: str, amount: int | float):
-    """Add *amount* to *pid*'s wallet (for admin recharge)."""
+    """Add *amount* to *pid*'s wallet (for admin recharge). Persists to the database."""
     current = _get(passengers, pid)
-    _set(passengers, pid, current + amount)
+    new_balance = current + amount
+    _set(passengers, pid, new_balance)
+    _persist_balance(pid, new_balance)

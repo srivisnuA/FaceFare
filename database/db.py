@@ -1,0 +1,51 @@
+# database/db.py
+# ─────────────────────────────────────────────────────────────────
+# SQLite connection + schema setup for FaceFare.
+# The database file itself (facefare.db) is git-ignored — it's
+# regenerated automatically on first run with seed passenger data.
+# ─────────────────────────────────────────────────────────────────
+
+import sqlite3
+import os
+
+DB_PATH = os.path.join(os.path.dirname(__file__), "facefare.db")
+
+# Seed data used only the very first time the DB is created.
+DEFAULT_PASSENGERS = {
+    "srivisnu": 100,
+    "praveen":  120,
+    "bob":      80,
+}
+
+
+def get_connection() -> sqlite3.Connection:
+    """Open a new connection to the FaceFare SQLite database."""
+    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def init_db():
+    """Create the passengers table if it doesn't exist, and seed it
+    with default passengers the very first time the DB is created."""
+    conn = get_connection()
+    cur = conn.cursor()
+
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS passengers (
+            pid     TEXT PRIMARY KEY,
+            balance REAL NOT NULL
+        )
+    """)
+
+    cur.execute("SELECT COUNT(*) FROM passengers")
+    count = cur.fetchone()[0]
+
+    if count == 0:
+        cur.executemany(
+            "INSERT INTO passengers (pid, balance) VALUES (?, ?)",
+            list(DEFAULT_PASSENGERS.items()),
+        )
+
+    conn.commit()
+    conn.close()

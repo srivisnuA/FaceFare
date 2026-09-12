@@ -1,5 +1,4 @@
-# app.py  —  FaceFare · Flask + SocketIO backend
-# ─────────────────────────────────────────────────────────────────
+
 import cv2
 import base64
 import threading
@@ -15,10 +14,10 @@ from vision.recognition import recognize_face
 from database.models import get_passengers, get_all_balances
 from services.trip_manager import board, exit_bus
 from services.wallet import deduct_balance
+from services.fare_engine import calculate_fare
+from services.logger import log_transaction
 
-# ─────────────────────────────────────────────
-# App + SocketIO
-# ─────────────────────────────────────────────
+
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = "facefare_secret"
@@ -64,10 +63,7 @@ _haar = cv2.CascadeClassifier(
     cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
 )
 
-# ─────────────────────────────────────────────
-# Snapshot helper
-# NOTE: acquires state_lock internally — NEVER call while already holding it
-# ─────────────────────────────────────────────
+
 
 def build_snapshot(recognized=None):
     if recognized is None:
@@ -86,9 +82,6 @@ def build_snapshot(recognized=None):
     return snap
 
 
-# ─────────────────────────────────────────────
-# Passenger logic — call while holding state_lock
-# ─────────────────────────────────────────────
 
 def handle_passenger(pid, current_stop):
     mode = state["mode"]
@@ -97,6 +90,7 @@ def handle_passenger(pid, current_stop):
         if pid not in state["onboard"]:
             board(state, pid)
             state["boarding_stop"][pid] = current_stop
+            log_transaction(pid, "BOARD", f"stop={BUS_STOPS[current_stop]}")
             return {
                 "passenger": pid,
                 "event":     "BOARD",
@@ -110,10 +104,11 @@ def handle_passenger(pid, current_stop):
             start    = state["boarding_stop"].get(pid, current_stop)
             end      = current_stop
             distance = max(1, end - start)
-            fare     = BASE_FARE + distance * PER_STOP_RATE
+            fare     = calculate_fare(distance, BASE_FARE, PER_STOP_RATE)
             if deduct_balance(passengers, pid, fare):
                 exit_bus(state, pid)
                 state["revenue"] += fare
+                log_transaction(pid, "EXIT", f"stop={BUS_STOPS[end]}, distance={distance}, fare={fare}")
                 return {
                     "passenger": pid,
                     "event":     "EXIT",
@@ -123,6 +118,7 @@ def handle_passenger(pid, current_stop):
                     "time":      datetime.now().strftime("%H:%M:%S"),
                 }
             else:
+                log_transaction(pid, "DECLINED", f"stop={BUS_STOPS[end]}, distance={distance}, fare={fare} (insufficient balance)")
                 return {
                     "passenger": pid,
                     "event":     "DECLINED",
@@ -132,7 +128,6 @@ def handle_passenger(pid, current_stop):
                     "time":      datetime.now().strftime("%H:%M:%S"),
                 }
     return None
-
 
 # ─────────────────────────────────────────────
 # Camera thread
