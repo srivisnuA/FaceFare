@@ -1,14 +1,25 @@
-def board(session_state, passenger_id):
-
-    if passenger_id not in session_state["onboard"]:
-        session_state["onboard"].append(passenger_id)
-
-    return session_state["onboard"]
+"""Passenger boarding and exit state helpers."""
 
 
-def exit_bus(session_state, passenger_id):
+def board(session_state: dict, passenger_id: str) -> list:
+    """Add a passenger to the onboard list if not already present."""
+    if not passenger_id:
+        raise ValueError("passenger_id is required")
 
-    if passenger_id in session_state["onboard"]:
-        session_state["onboard"].remove(passenger_id)
+    onboard = session_state.setdefault("onboard", [])
+    if passenger_id not in onboard:
+        onboard.append(passenger_id)
 
-    return session_state["onboard"]
+    return onboard
+
+
+def exit_bus(session_state: dict, passenger_id: str) -> list:
+    """Remove a passenger from the onboard list if present."""
+    if not passenger_id:
+        raise ValueError("passenger_id is required")
+
+    onboard = session_state.setdefault("onboard", [])
+    if passenger_id in onboard:
+        onboard.remove(passenger_id)
+
+    return onboard
