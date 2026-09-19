@@ -1,97 +1,203 @@
 # FaceFare 🚌👤💳
 
-[![Python](https://img.shields.io/badge/Python-3.10-blue)](https://www.python.org/)
-[![Flask](https://img.shields.io/badge/Flask-SocketIO-black)](https://flask-socketio.readthedocs.io/)
-[![OpenCV](https://img.shields.io/badge/OpenCV-Face_Detection-green)](https://opencv.org/)
-[![DeepFace](https://img.shields.io/badge/DeepFace-Facenet-orange)](https://github.com/serengil/deepface)
+FaceFare is a real-time face-recognition-based fare collection prototype for public transport. Passengers are identified through a camera while boarding and exiting, and the system calculates and deducts the fare from a passenger wallet.
 
-## 📌 Overview
+> **Project status:** Prototype / academic project. The current implementation is designed for local development and demonstration, not production deployment.
 
-FaceFare is a real-time, face-recognition-based fare collection system for public transport. Instead of tickets or tap cards, passengers are identified by their face as they board and exit — their wallet is automatically debited based on the distance travelled between stops, with zero manual scanning or payment steps.
+## Features
 
-A live camera feed, passenger recognition, and fare deduction are all shown on a real-time web dashboard.
+- **Real-time face recognition** using OpenCV face detection and DeepFace/FaceNet-based recognition.
+- **Entry and exit modes** for simulating passenger boarding and exit.
+- **Distance-based fare calculation** using a base fare plus a per-stop rate.
+- **Wallet management** with balance checks and fare deduction.
+- **Live dashboard** using Flask, Flask-SocketIO, HTML, CSS and JavaScript.
+- **SQLite-backed passenger data** for local persistence.
+- **Trip/session handling** for tracking boarding and exit state.
+- **Known-face directory** for enrolling reference images.
 
-## 🚀 Key Features
+## Architecture
 
-- **🎥 Real-Time Face Recognition** — Detects and identifies passengers from a live camera feed using OpenCV (Haar Cascade for detection) and DeepFace (Facenet embeddings) for recognition.
-- **⛽ Automatic Fare Calculation** — Fare is calculated dynamically from a base fare plus a per-stop rate, based on the distance between the passenger's boarding and exit stops.
-- **💰 Wallet-Based Payments** — Each passenger has a wallet balance that's automatically debited on exit; boarding is declined if funds are insufficient.
-- **🔀 Entry/Exit Mode Switching** — The system can be toggled between ENTRY mode (boarding passengers) and EXIT mode (deducting fares as passengers leave).
-- **🖥️ Live Web Dashboard** — A Flask + SocketIO powered frontend shows the live camera feed, onboard passenger list, recent transaction logs, and running revenue in real time.
-
-## 🛠️ Technology Stack
-
-- **Backend:** Flask, Flask-SocketIO
-- **Computer Vision:** OpenCV (Haar Cascade face detection)
-- **Face Recognition:** DeepFace (Facenet embedding model)
-- **Deep Learning Runtime:** TensorFlow / Keras
-- **Frontend:** HTML, CSS, JavaScript (Socket.IO client)
-
-## 🏗️ System Architecture
-
-1. **Camera Capture** — A background thread continuously reads frames from the webcam.
-2. **Face Detection** — Each frame is scanned with a Haar Cascade classifier to locate faces.
-3. **Face Recognition** — Detected face crops are passed to DeepFace, which generates a Facenet embedding and compares it against known passenger embeddings (loaded from `assets/known_faces/`) using distance matching.
-4. **Passenger State Handling** — Depending on the current mode (ENTRY/EXIT), a recognized passenger is either boarded (recorded onboard + boarding stop) or charged and exited (fare calculated from stop distance, wallet debited).
-5. **Live Updates** — Every processed frame pushes an updated state snapshot (onboard list, logs, wallet balances, revenue) to the frontend over WebSockets via SocketIO.
-
-## 📂 Project Structure
-
+```text
+Camera Feed
+    │
+    ▼
+OpenCV Detection
+    │
+    ▼
+DeepFace / FaceNet Recognition
+    │
+    ▼
+Trip / Fare Logic
+    ├──────────────┐
+    ▼              ▼
+SQLite        Wallet / Fare
+    └──────┬───────┘
+           ▼
+Flask + Socket.IO
+    Live Dashboard
 ```
+
+## Technology Stack
+
+| Area | Technology |
+|---|---|
+| Language | Python |
+| Web backend | Flask |
+| Real-time communication | Flask-SocketIO |
+| Computer vision | OpenCV |
+| Face recognition | DeepFace / FaceNet |
+| ML runtime | TensorFlow / Keras |
+| Database | SQLite |
+| Frontend | HTML, CSS, JavaScript |
+| Charts | Chart.js |
+
+## Project Structure
+
+```text
 FaceFare/
-├── app.py                  # Main Flask + SocketIO application
-├── assets/known_faces/     # Reference face images for known passengers
+├── app.py
+├── app2.py                  # Legacy/alternate Flask implementation
+├── config.py
+├── requirements.txt
+├── assets/
+│   └── known_faces/         # Reference face images
 ├── database/
-│   └── models.py           # Passenger records & wallet balances
+│   ├── db.py                # SQLite connection and initialization
+│   └── models.py            # Passenger/wallet operations
 ├── services/
-│   ├── trip_manager.py     # Board/exit passenger logic
-│   └── wallet.py           # Wallet deduction/top-up logic
+│   ├── fare_engine.py       # Fare calculation
+│   ├── logger.py            # Event logging
+│   ├── trip_manager.py      # Boarding/exit state
+│   └── wallet.py            # Wallet operations
+├── security/
+│   ├── auth.py
+│   └── privacy.py
 ├── vision/
-│   ├── camera.py           # Webcam capture
-│   └── recognition.py      # Face embedding + matching
-├── templates/index.html    # Live dashboard frontend
-└── requirements.txt
+│   ├── camera.py
+│   ├── face_detector.py
+│   └── recognition.py
+└── templates/
+    ├── index.html
+    └── login.html
 ```
 
-## 💻 Installation & Setup
+## Installation
+
+### 1. Clone the repository
 
 ```bash
-# 1. Clone the repository
 git clone https://github.com/srivisnuA/FaceFare.git
 cd FaceFare
-
-# 2. Create and activate a virtual environment (recommended)
-python -m venv venv
-source venv/bin/activate   # On Windows: venv\Scripts\activate
-
-# 3. Install dependencies
-pip install -r requirements.txt
-
-# 4. Add reference faces
-# Place one or more images per known passenger inside assets/known_faces/
-# (filename, minus digits/extension, is used as the passenger's identity)
-
-# 5. Run the application
-python app.py
-
-# 6. Open the dashboard
-# Visit http://localhost:5000 in your browser
 ```
 
-## 🎮 Usage
+### 2. Create a virtual environment
 
-- Click **Start Camera** on the dashboard to begin live detection.
-- Use the **Entry / Exit** toggle to switch between boarding and exit modes.
-- Use **Next Stop / Previous Stop** to simulate the bus moving along its route as passengers board and exit.
-- Recognized passengers are automatically boarded (ENTRY mode) or charged and exited (EXIT mode) based on the distance travelled.
+**Windows:**
 
-## 🔮 Future Improvements
+```powershell
+python -m venv venv
+venv\\Scripts\\activate
+```
 
-- Persistent storage (SQLite/PostgreSQL) for passenger wallets and trip history, replacing the current in-memory store
-- Authentication for the driver/admin control panel
-- Support for topping up wallets from the dashboard
-- Deployment-ready configuration for running on embedded/edge hardware
+**Linux / macOS:**
 
-## 📄 License
+```bash
+python3 -m venv venv
+source venv/bin/activate
+```
 
-This project currently has no license specified.
+### 3. Install dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+### 4. Add known faces
+
+Place reference images for enrolled passengers under `assets/known_faces/`.
+
+### 5. Start the application
+
+```bash
+python app.py
+```
+
+Then open `http://localhost:5000` in your browser.
+
+## How It Works
+
+1. The camera captures video frames.
+2. OpenCV detects faces.
+3. The recognition pipeline attempts to identify the passenger.
+4. In **ENTRY** mode, the passenger is added to the active trip.
+5. In **EXIT** mode, the fare is calculated from the boarding and exit stops.
+6. The wallet is updated.
+7. The dashboard receives live state updates through Socket.IO.
+
+## Fare Calculation
+
+```text
+Fare = Base Fare + (Stop Distance × Per-Stop Rate)
+```
+
+Default values in `config.py`:
+
+- Base fare: **₹10**
+- Per-stop rate: **₹5**
+- Route: **Stop A → Stop B → Stop C → Stop D → Stop E**
+
+These are prototype configuration values and can be changed.
+
+## Configuration
+
+The Flask secret key can be supplied through the `FACEFARE_SECRET_KEY` environment variable.
+
+```powershell
+$env:FACEFARE_SECRET_KEY="replace-with-a-random-secret"
+```
+
+Do not commit real production secrets, passwords, API keys or credentials.
+
+## Current Development Notes
+
+FaceFare is still under active development. Planned engineering improvements include:
+
+- Recognition speed and stability.
+- Separation of camera, recognition, business and web layers.
+- Persistent trip and transaction records.
+- Atomic wallet/fare transactions.
+- Authentication and session security.
+- Automated testing.
+- Dual-camera entry/exit support.
+- Privacy and biometric-data handling.
+
+The repository contains prototype and legacy components while these areas are being consolidated.
+
+## Privacy Considerations
+
+Face recognition involves biometric data and requires careful handling. This prototype should only be tested with appropriate consent and controlled access.
+
+Before production use, the system should address secure biometric-data storage, encryption, access controls, retention/deletion policies, passenger consent, protection of reference face images, audit logging and secure authentication.
+
+## Roadmap
+
+1. Stabilize the recognition pipeline.
+2. Improve recognition performance and temporal stability.
+3. Separate application, service and vision responsibilities.
+4. Persist trips and transactions.
+5. Make wallet/fare operations atomic.
+6. Harden authentication and web security.
+7. Add automated tests.
+8. Remove or archive legacy implementations.
+9. Implement the dual-camera entry/exit architecture.
+10. Strengthen privacy-preserving biometric-data handling.
+11. Add production deployment and monitoring configuration.
+
+## License
+
+No open-source license is currently specified for this repository. Until a license is added, the code should not be assumed to be freely reusable, modified or redistributed.
+
+## Author
+
+**Srivisnu A**  
+CSE — Data Science
