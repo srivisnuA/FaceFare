@@ -477,6 +477,7 @@ const MAX_BAL   = 200;
   let socketConnected = false;
   let prevWallets  = {};
   let prevLogLen   = 0;
+  let lastToastKey = null;
   let passengerRev = {};
   let tripCounts   = {};
   const _prev      = {};
@@ -884,6 +885,9 @@ const MAX_BAL   = 200;
     if (!logs.length) return;
     const newest = logs[logs.length-1];
     if (!newest) return;
+    const key = newest.passenger + '|' + newest.event + '|' + newest.time + '|' + newest.stop + '|' + newest.fare;
+    if (key === lastToastKey) return;  // already toasted this exact event
+    lastToastKey = key;
     if (newest.event==='BOARD')
       showToast('⬆ ' + newest.passenger + ' boarded at ' + newest.stop, 'board');
     else if (newest.event==='EXIT')

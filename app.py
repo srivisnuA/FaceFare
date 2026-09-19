@@ -1,4 +1,5 @@
-
+# app.py  —  FaceFare · Flask + SocketIO backend
+# ─────────────────────────────────────────────────────────────────
 import cv2
 import base64
 import threading
@@ -6,21 +7,27 @@ import time
 import traceback
 from datetime import datetime
 
-from flask import Flask, render_template, jsonify, request
+from flask import Flask, render_template, jsonify, request, redirect, url_for, session
 from flask_socketio import SocketIO, emit
 
 from vision.camera import open_camera
 from vision.recognition import recognize_face
+from vision.face_detector import detect_faces
 from database.models import get_passengers, get_all_balances
 from services.trip_manager import board, exit_bus
 from services.wallet import deduct_balance
 from services.fare_engine import calculate_fare
 from services.logger import log_transaction
+from security.auth import login_required, is_authenticated, check_password
+from security.privacy import blur_face, is_enrolled_passenger
+from config import SECRET_KEY, BUS_STOPS, BASE_FARE, PER_STOP_RATE
 
-
+# ─────────────────────────────────────────────
+# App + SocketIO
+# ─────────────────────────────────────────────
 
 app = Flask(__name__)
-app.config["SECRET_KEY"] = "facefare_secret"
+app.config["SECRET_KEY"] = SECRET_KEY
 
 socketio = SocketIO(
     app,
@@ -29,14 +36,6 @@ socketio = SocketIO(
     logger=False,
     engineio_logger=False,
 )
-
-# ─────────────────────────────────────────────
-# Config
-# ─────────────────────────────────────────────
-
-BUS_STOPS     = ["Stop A", "Stop B", "Stop C", "Stop D", "Stop E"]
-BASE_FARE     = 10
-PER_STOP_RATE = 5
 
 # ─────────────────────────────────────────────
 # Shared state
@@ -56,14 +55,9 @@ state = {
 passengers = get_passengers()
 
 # ─────────────────────────────────────────────
-# Haar cascade
+# Snapshot helper
+# NOTE: acquires state_lock internally — NEVER call while already holding it
 # ─────────────────────────────────────────────
-
-_haar = cv2.CascadeClassifier(
-    cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
-)
-
-
 
 def build_snapshot(recognized=None):
     if recognized is None:
@@ -82,6 +76,9 @@ def build_snapshot(recognized=None):
     return snap
 
 
+# ─────────────────────────────────────────────
+# Passenger logic — call while holding state_lock
+# ─────────────────────────────────────────────
 
 def handle_passenger(pid, current_stop):
     mode = state["mode"]
@@ -128,6 +125,7 @@ def handle_passenger(pid, current_stop):
                     "time":      datetime.now().strftime("%H:%M:%S"),
                 }
     return None
+
 
 # ─────────────────────────────────────────────
 # Camera thread
@@ -177,13 +175,7 @@ def camera_thread():
 
             # ── Face detection ────────────────
             try:
-                gray  = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-                boxes = _haar.detectMultiScale(
-                    gray,
-                    scaleFactor  = 1.1,
-                    minNeighbors = 5,
-                    minSize      = (50, 50),
-                )
+                boxes = detect_faces(frame)
             except Exception as e:
                 print(f"[Camera] Detection error: {e}")
                 boxes = []
@@ -197,6 +189,11 @@ def camera_thread():
                         continue
 
                     pid = recognize_face(crop)
+
+                    if not is_enrolled_passenger(pid):
+                        # Bystander / unrecognized face — blur for privacy
+                        # before it's drawn on or streamed anywhere.
+                        blur_face(frame, x, y, w, h)
 
                     if pid in ("Unknown", "Unknown passenger"):
                         color, label = (0, 165, 255), "Unknown"
@@ -249,7 +246,27 @@ def camera_thread():
 # HTTP routes
 # ─────────────────────────────────────────────
 
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    error = None
+    if request.method == "POST":
+        password = request.form.get("password", "")
+        if check_password(password):
+            session["authenticated"] = True
+            next_url = request.args.get("next") or url_for("index")
+            return redirect(next_url)
+        error = "Incorrect password."
+    return render_template("login.html", error=error)
+
+
+@app.route("/logout")
+def logout():
+    session.pop("authenticated", None)
+    return redirect(url_for("login"))
+
+
 @app.route("/")
+@login_required
 def index():
     return render_template(
         "index.html",
@@ -260,6 +277,7 @@ def index():
 
 
 @app.route("/control", methods=["POST"])
+@login_required
 def control():
     data   = request.get_json(silent=True) or {}
     action = data.get("action", "")
@@ -284,6 +302,9 @@ def control():
 
 @socketio.on("connect")
 def on_connect():
+    if not is_authenticated():
+        print(f"[SocketIO] Rejected unauthenticated client: {request.sid}")
+        return False  # reject the connection
     print(f"[SocketIO] Client connected: {request.sid}")
     emit("update", build_snapshot())
     with camera_lock:
@@ -299,6 +320,9 @@ def on_disconnect():
 @socketio.on("start_camera")
 def on_start_camera():
     global camera_running
+    if not is_authenticated():
+        print("[SocketIO] Rejected unauthenticated start_camera")
+        return
     print("[SocketIO] start_camera received")
     with camera_lock:
         already = camera_running
@@ -317,6 +341,9 @@ def on_start_camera():
 @socketio.on("stop_camera")
 def on_stop_camera():
     global camera_running
+    if not is_authenticated():
+        print("[SocketIO] Rejected unauthenticated stop_camera")
+        return
     print("[SocketIO] stop_camera received")
     with camera_lock:
         camera_running = False
