@@ -8,6 +8,15 @@ from database.db import get_connection, init_db
 init_db()
 
 
+def _valid_balance(value) -> bool:
+    """Return True only for non-negative numeric wallet balances."""
+    return (
+        isinstance(value, (int, float))
+        and not isinstance(value, bool)
+        and value >= 0
+    )
+
+
 def get_passengers() -> dict:
     """Return all passengers as {pid: {'balance': ...}}."""
     conn = get_connection()
@@ -35,8 +44,8 @@ def update_balance(pid: str, new_balance):
     """Overwrite a passenger's balance in the database."""
     if not pid:
         raise ValueError("pid is required")
-    if new_balance < 0:
-        raise ValueError("balance cannot be negative")
+    if not _valid_balance(new_balance):
+        raise ValueError("balance must be a non-negative number")
 
     conn = get_connection()
     try:
@@ -55,8 +64,8 @@ def add_passenger(pid: str, initial_balance=100):
     """Add a new passenger without silently replacing an existing wallet."""
     if not pid:
         raise ValueError("pid is required")
-    if initial_balance < 0:
-        raise ValueError("initial_balance cannot be negative")
+    if not _valid_balance(initial_balance):
+        raise ValueError("initial_balance must be a non-negative number")
 
     conn = get_connection()
     try:
