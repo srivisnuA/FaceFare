@@ -1,23 +1,27 @@
 # security/auth.py
 # ─────────────────────────────────────────────────────────────────
 # Simple session-based authentication for the driver/admin panel.
-#
-# NOTE: ADMIN_PASSWORD is read from an environment variable so the
-# real password is never committed to git. Falls back to a default
-# for local development only — set FACEFARE_ADMIN_PASSWORD before
-# deploying this anywhere real.
 # ─────────────────────────────────────────────────────────────────
 
 import os
 from functools import wraps
+from hmac import compare_digest
+
 from flask import session, redirect, url_for, request
 
-ADMIN_PASSWORD = os.environ.get("FACEFARE_ADMIN_PASSWORD", "facefare123")
+ADMIN_PASSWORD = os.environ.get("FACEFARE_ADMIN_PASSWORD")
+
+if not ADMIN_PASSWORD:
+    ADMIN_PASSWORD = "facefare123"
+    if os.environ.get("FACEFARE_ENV", "development").lower() != "development":
+        raise RuntimeError(
+            "FACEFARE_ADMIN_PASSWORD must be set outside development."
+        )
 
 
 def check_password(password: str) -> bool:
-    """Check a submitted password against the configured admin password."""
-    return password == ADMIN_PASSWORD
+    """Check a submitted password using constant-time comparison."""
+    return compare_digest(password, ADMIN_PASSWORD)
 
 
 def is_authenticated() -> bool:
