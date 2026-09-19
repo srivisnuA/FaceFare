@@ -5,6 +5,7 @@ import base64
 import threading
 import time
 import traceback
+import os
 from datetime import datetime
 
 from flask import Flask, render_template, jsonify, request, redirect, url_for, session
@@ -29,9 +30,19 @@ from config import SECRET_KEY, BUS_STOPS, BASE_FARE, PER_STOP_RATE
 app = Flask(__name__)
 app.config["SECRET_KEY"] = SECRET_KEY
 
+SOCKETIO_CORS_ORIGINS = os.environ.get("FACEFARE_CORS_ORIGINS", "").strip()
+if SOCKETIO_CORS_ORIGINS:
+    SOCKETIO_CORS_ORIGINS = [
+        origin.strip()
+        for origin in SOCKETIO_CORS_ORIGINS.split(",")
+        if origin.strip()
+    ]
+else:
+    SOCKETIO_CORS_ORIGINS = None
+
 socketio = SocketIO(
     app,
-    cors_allowed_origins="*",
+    cors_allowed_origins=SOCKETIO_CORS_ORIGINS,
     async_mode="threading",
     logger=False,
     engineio_logger=False,
