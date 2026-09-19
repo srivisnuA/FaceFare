@@ -292,6 +292,10 @@ def control():
         elif action == "prev_stop":
             if state["current_stop"] > 0:
                 state["current_stop"] -= 1
+
+    # Build the snapshot only after releasing state_lock.
+    # build_snapshot() acquires state_lock itself; calling it while the
+    # lock is already held would deadlock because state_lock is not reentrant.
     socketio.emit("update", build_snapshot())
     return jsonify({"ok": True})
 
