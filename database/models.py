@@ -17,6 +17,11 @@ def _valid_balance(value) -> bool:
     )
 
 
+def _valid_delta(value) -> bool:
+    """Return True only for numeric wallet adjustments."""
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
 def get_passengers() -> dict:
     """Return all passengers as {pid: {'balance': ...}}."""
     conn = get_connection()
@@ -56,6 +61,47 @@ def update_balance(pid: str, new_balance):
         if cursor.rowcount == 0:
             raise ValueError(f"Passenger not found: {pid}")
         conn.commit()
+    finally:
+        conn.close()
+
+
+def change_balance(pid: str, delta):
+    """
+    Atomically adjust a passenger balance.
+
+    Returns the new balance on success, or None when the passenger does
+    not have enough balance for a deduction.
+    """
+    if not pid:
+        raise ValueError("pid is required")
+    if not _valid_delta(delta) or delta == 0:
+        raise ValueError("delta must be a non-zero number")
+
+    conn = get_connection()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        row = conn.execute(
+            "SELECT balance FROM passengers WHERE pid = ?",
+            (pid,),
+        ).fetchone()
+
+        if row is None:
+            raise ValueError(f"Passenger not found: {pid}")
+
+        new_balance = row["balance"] + delta
+        if new_balance < 0:
+            conn.rollback()
+            return None
+
+        conn.execute(
+            "UPDATE passengers SET balance = ? WHERE pid = ?",
+            (new_balance, pid),
+        )
+        conn.commit()
+        return new_balance
+    except Exception:
+        conn.rollback()
+        raise
     finally:
         conn.close()
 
