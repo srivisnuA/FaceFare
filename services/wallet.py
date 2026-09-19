@@ -44,8 +44,11 @@ def deduct_balance(passengers: dict, pid: str, amount: int | float) -> bool:
         return False
 
     new_balance = current - amount
-    _set(passengers, pid, new_balance)
+
+    # Persist first so a database failure cannot leave the in-memory
+    # wallet showing a balance that was never committed to storage.
     _persist_balance(pid, new_balance)
+    _set(passengers, pid, new_balance)
     return True
 
 
@@ -56,6 +59,8 @@ def top_up(passengers: dict, pid: str, amount: int | float) -> bool:
 
     current = _get(passengers, pid)
     new_balance = current + amount
-    _set(passengers, pid, new_balance)
+
+    # Persist first for the same consistency guarantee as deductions.
     _persist_balance(pid, new_balance)
+    _set(passengers, pid, new_balance)
     return True
