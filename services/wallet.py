@@ -8,7 +8,7 @@
 # AND persisted to the database, so they survive an app restart.
 # ─────────────────────────────────────────────────────────────────
 
-from database.models import update_balance as _persist_balance
+from database.models import change_balance as _change_balance
 
 
 def _get(passengers: dict, pid: str) -> int | float:
@@ -31,36 +31,31 @@ def _set(passengers: dict, pid: str, amount: int | float):
 
 def _valid_amount(amount: int | float) -> bool:
     """Return True only for strictly positive numeric amounts."""
-    return isinstance(amount, (int, float)) and amount > 0
+    return (
+        isinstance(amount, (int, float))
+        and not isinstance(amount, bool)
+        and amount > 0
+    )
 
 
 def deduct_balance(passengers: dict, pid: str, amount: int | float) -> bool:
-    """Deduct amount from a passenger wallet safely."""
+    """Atomically deduct amount from a passenger wallet."""
     if not _valid_amount(amount) or pid not in passengers:
         return False
 
-    current = _get(passengers, pid)
-    if current < amount:
+    new_balance = _change_balance(pid, -amount)
+    if new_balance is None:
         return False
 
-    new_balance = current - amount
-
-    # Persist first so a database failure cannot leave the in-memory
-    # wallet showing a balance that was never committed to storage.
-    _persist_balance(pid, new_balance)
     _set(passengers, pid, new_balance)
     return True
 
 
 def top_up(passengers: dict, pid: str, amount: int | float) -> bool:
-    """Add a strictly positive amount to a passenger wallet."""
+    """Atomically add a strictly positive amount to a passenger wallet."""
     if not _valid_amount(amount) or pid not in passengers:
         return False
 
-    current = _get(passengers, pid)
-    new_balance = current + amount
-
-    # Persist first for the same consistency guarantee as deductions.
-    _persist_balance(pid, new_balance)
+    new_balance = _change_balance(pid, amount)
     _set(passengers, pid, new_balance)
     return True
