@@ -26,26 +26,27 @@ def get_connection() -> sqlite3.Connection:
 
 
 def init_db():
-    """Create the passengers table if it doesn't exist, and seed it
-    with default passengers the very first time the DB is created."""
+    """Create the passengers table and seed it only when it is empty."""
     conn = get_connection()
-    cur = conn.cursor()
+    try:
+        cur = conn.cursor()
 
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS passengers (
-            pid     TEXT PRIMARY KEY,
-            balance REAL NOT NULL
-        )
-    """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS passengers (
+                pid     TEXT PRIMARY KEY,
+                balance REAL NOT NULL CHECK (balance >= 0)
+            )
+        """)
 
-    cur.execute("SELECT COUNT(*) FROM passengers")
-    count = cur.fetchone()[0]
+        cur.execute("SELECT COUNT(*) FROM passengers")
+        count = cur.fetchone()[0]
 
-    if count == 0:
-        cur.executemany(
-            "INSERT INTO passengers (pid, balance) VALUES (?, ?)",
-            list(DEFAULT_PASSENGERS.items()),
-        )
+        if count == 0:
+            cur.executemany(
+                "INSERT INTO passengers (pid, balance) VALUES (?, ?)",
+                list(DEFAULT_PASSENGERS.items()),
+            )
 
-    conn.commit()
-    conn.close()
+        conn.commit()
+    finally:
+        conn.close()
