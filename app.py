@@ -129,7 +129,7 @@ def handle_passenger(pid, current_stop):
         if pid in state["onboard"]:
             start    = state["boarding_stop"].get(pid, current_stop)
             end      = current_stop
-            distance = max(1, end - start)
+            distance = max(0, end - start)
             fare     = calculate_fare(distance, BASE_FARE, PER_STOP_RATE)
             if deduct_balance(passengers, pid, fare):
                 exit_bus(state, pid)
