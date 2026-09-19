@@ -9,11 +9,12 @@ FaceFare is a real-time face-recognition-based fare collection prototype for pub
 - **Real-time face recognition** using OpenCV face detection and DeepFace/FaceNet-based recognition.
 - **Entry and exit modes** for simulating passenger boarding and exit.
 - **Distance-based fare calculation** using a base fare plus a per-stop rate.
-- **Wallet management** with balance checks and fare deduction.
+- **Wallet management** with atomic balance updates and fare deduction.
 - **Live dashboard** using Flask, Flask-SocketIO, HTML, CSS and JavaScript.
 - **SQLite-backed passenger data** for local persistence.
 - **Trip/session handling** for tracking boarding and exit state.
-- **Known-face directory** for enrolling reference images.
+- **Privacy handling** that blurs unrecognized faces before the video frame is streamed.
+- **Authenticated driver dashboard** with configurable Socket.IO origins.
 
 ## Architecture
 
@@ -21,7 +22,7 @@ FaceFare is a real-time face-recognition-based fare collection prototype for pub
 Camera Feed
     │
     ▼
-OpenCV Detection
+OpenCV Face Detection
     │
     ▼
 DeepFace / FaceNet Recognition
@@ -30,7 +31,7 @@ DeepFace / FaceNet Recognition
 Trip / Fare Logic
     ├──────────────┐
     ▼              ▼
-SQLite        Wallet / Fare
+SQLite       Atomic Wallet
     └──────┬───────┘
            ▼
 Flask + Socket.IO
@@ -56,7 +57,6 @@ Flask + Socket.IO
 ```text
 FaceFare/
 ├── app.py
-├── app2.py                  # Legacy/alternate Flask implementation
 ├── config.py
 ├── requirements.txt
 ├── assets/
@@ -70,12 +70,13 @@ FaceFare/
 │   ├── trip_manager.py      # Boarding/exit state
 │   └── wallet.py            # Wallet operations
 ├── security/
-│   ├── auth.py
-│   └── privacy.py
+│   ├── auth.py              # Driver/admin authentication
+│   └── privacy.py           # Face privacy helpers
 ├── vision/
-│   ├── camera.py
-│   ├── face_detector.py
-│   └── recognition.py
+│   ├── camera.py            # Camera initialization
+│   ├── face_detector.py     # OpenCV DNN detection
+│   ├── models/              # Face detector model files
+│   └── recognition.py       # DeepFace recognition
 └── templates/
     ├── index.html
     └── login.html
@@ -116,6 +117,8 @@ pip install -r requirements.txt
 
 Place reference images for enrolled passengers under `assets/known_faces/`.
 
+The filename is used as the passenger identifier after numeric characters are removed. Make sure the resulting identifier matches a passenger in the SQLite database.
+
 ### 5. Start the application
 
 ```bash
@@ -124,6 +127,30 @@ python app.py
 
 Then open `http://localhost:5000` in your browser.
 
+## Authentication and Configuration
+
+For local development, the application has development fallbacks. **Do not use those defaults in a deployed environment.**
+
+Set:
+
+**PowerShell**
+
+```powershell
+$env:FACEFARE_ENV="production"
+$env:FACEFARE_SECRET_KEY="replace-with-a-long-random-secret"
+$env:FACEFARE_ADMIN_PASSWORD="replace-with-a-strong-password"
+```
+
+Optional Socket.IO cross-origin configuration:
+
+```powershell
+$env:FACEFARE_CORS_ORIGINS="https://dashboard.example.com"
+```
+
+Multiple origins can be comma-separated.
+
+Do not commit real production secrets, passwords, API keys or credentials.
+
 ## How It Works
 
 1. The camera captures video frames.
@@ -131,8 +158,9 @@ Then open `http://localhost:5000` in your browser.
 3. The recognition pipeline attempts to identify the passenger.
 4. In **ENTRY** mode, the passenger is added to the active trip.
 5. In **EXIT** mode, the fare is calculated from the boarding and exit stops.
-6. The wallet is updated.
+6. The wallet transaction is committed atomically to SQLite.
 7. The dashboard receives live state updates through Socket.IO.
+8. Unrecognized faces are blurred before the frame is streamed.
 
 ## Fare Calculation
 
@@ -148,30 +176,20 @@ Default values in `config.py`:
 
 These are prototype configuration values and can be changed.
 
-## Configuration
+## Development Notes
 
-The Flask secret key can be supplied through the `FACEFARE_SECRET_KEY` environment variable.
+The codebase has been hardened around several failure modes:
 
-```powershell
-$env:FACEFARE_SECRET_KEY="replace-with-a-random-secret"
-```
-
-Do not commit real production secrets, passwords, API keys or credentials.
-
-## Current Development Notes
-
-FaceFare is still under active development. Planned engineering improvements include:
-
-- Recognition speed and stability.
-- Separation of camera, recognition, business and web layers.
-- Persistent trip and transaction records.
-- Atomic wallet/fare transactions.
-- Authentication and session security.
-- Automated testing.
-- Dual-camera entry/exit support.
-- Privacy and biometric-data handling.
-
-The repository contains prototype and legacy components while these areas are being consolidated.
+- Application and admin secrets are required outside development.
+- Socket.IO cross-origin access is configurable instead of universally open.
+- Login redirects are restricted to local application paths.
+- Control actions are validated.
+- Wallet updates use SQLite transactions to avoid concurrent lost updates or negative balances.
+- Database connections are closed reliably.
+- Camera/model initialization is defensive.
+- Transaction logging is serialized across threads.
+- Unrecognized faces are blurred before streaming.
+- The legacy duplicate Flask implementation has been removed.
 
 ## Privacy Considerations
 
@@ -179,19 +197,17 @@ Face recognition involves biometric data and requires careful handling. This pro
 
 Before production use, the system should address secure biometric-data storage, encryption, access controls, retention/deletion policies, passenger consent, protection of reference face images, audit logging and secure authentication.
 
+The current implementation does **not** claim to provide the planned SHA-256 embedding-hashing architecture or a complete privacy-preserving biometric deployment.
+
 ## Roadmap
 
-1. Stabilize the recognition pipeline.
-2. Improve recognition performance and temporal stability.
-3. Separate application, service and vision responsibilities.
-4. Persist trips and transactions.
-5. Make wallet/fare operations atomic.
-6. Harden authentication and web security.
-7. Add automated tests.
-8. Remove or archive legacy implementations.
-9. Implement the dual-camera entry/exit architecture.
-10. Strengthen privacy-preserving biometric-data handling.
-11. Add production deployment and monitoring configuration.
+1. Improve recognition performance and temporal stability.
+2. Add automated tests and CI.
+3. Persist complete trip and transaction records.
+4. Implement dual-camera entry/exit architecture.
+5. Calibrate and validate recognition thresholds with representative test data.
+6. Strengthen privacy-preserving biometric-data handling.
+7. Add production deployment and monitoring configuration.
 
 ## License
 
