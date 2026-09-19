@@ -7,6 +7,7 @@ import time
 import traceback
 import os
 from datetime import datetime
+from urllib.parse import urlparse
 
 from flask import Flask, render_template, jsonify, request, redirect, url_for, session
 from flask_socketio import SocketIO, emit
@@ -65,6 +66,23 @@ state = {
 
 passengers = get_passengers()
 
+
+# ─────────────────────────────────────────────
+# Helpers
+# ─────────────────────────────────────────────
+
+def _safe_next_url(target):
+    """Allow only local application paths after login."""
+    if not target:
+        return url_for("index")
+
+    parsed = urlparse(target)
+    if parsed.scheme or parsed.netloc or not target.startswith("/"):
+        return url_for("index")
+
+    return target
+
+
 # ─────────────────────────────────────────────
 # Snapshot helper
 # NOTE: acquires state_lock internally — NEVER call while already holding it
@@ -79,7 +97,7 @@ def build_snapshot(recognized=None):
             "current_stop": state["current_stop"],
             "stop_name":    BUS_STOPS[state["current_stop"]],
             "onboard":      list(state["onboard"]),
-            "logs":         list(state["logs"][-50:]),
+            "logs":          list(state["logs"][-50:]),
             "revenue":      state["revenue"],
             "wallets":      get_all_balances(),
             "recognized":   list(recognized),
@@ -150,7 +168,6 @@ def camera_thread():
     global camera_running
     print("[Camera] Thread started")
 
-    # ── Open camera ──────────────────────────
     try:
         cam = open_camera()
     except Exception as e:
@@ -184,7 +201,6 @@ def camera_thread():
                 print("[Camera] cam.read() failed — camera disconnected?")
                 break
 
-            # ── Face detection ────────────────
             try:
                 boxes = detect_faces(frame)
             except Exception as e:
@@ -202,8 +218,6 @@ def camera_thread():
                     pid = recognize_face(crop)
 
                     if not is_enrolled_passenger(pid):
-                        # Bystander / unrecognized face — blur for privacy
-                        # before it's drawn on or streamed anywhere.
                         blur_face(frame, x, y, w, h)
 
                     if pid in ("Unknown", "Unknown passenger"):
@@ -230,7 +244,6 @@ def camera_thread():
                     print(f"[Camera] Face processing error: {e}")
                     continue
 
-            # ── Encode & emit ─────────────────
             try:
                 _, buf    = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 75])
                 b64_frame = base64.b64encode(buf).decode("utf-8")
@@ -264,7 +277,7 @@ def login():
         password = request.form.get("password", "")
         if check_password(password):
             session["authenticated"] = True
-            next_url = request.args.get("next") or url_for("index")
+            next_url = _safe_next_url(request.args.get("next"))
             return redirect(next_url)
         error = "Incorrect password."
     return render_template("login.html", error=error)
@@ -290,8 +303,12 @@ def index():
 @app.route("/control", methods=["POST"])
 @login_required
 def control():
-    data   = request.get_json(silent=True) or {}
+    data = request.get_json(silent=True) or {}
     action = data.get("action", "")
+
+    if action not in {"entry", "exit", "next_stop", "prev_stop"}:
+        return jsonify({"ok": False, "error": "Invalid control action."}), 400
+
     with state_lock:
         if action == "entry":
             state["mode"] = "ENTRY"
@@ -304,9 +321,6 @@ def control():
             if state["current_stop"] > 0:
                 state["current_stop"] -= 1
 
-    # Build the snapshot only after releasing state_lock.
-    # build_snapshot() acquires state_lock itself; calling it while the
-    # lock is already held would deadlock because state_lock is not reentrant.
     socketio.emit("update", build_snapshot())
     return jsonify({"ok": True})
 
@@ -319,7 +333,7 @@ def control():
 def on_connect():
     if not is_authenticated():
         print(f"[SocketIO] Rejected unauthenticated client: {request.sid}")
-        return False  # reject the connection
+        return False
     print(f"[SocketIO] Client connected: {request.sid}")
     emit("update", build_snapshot())
     with camera_lock:
@@ -338,6 +352,7 @@ def on_start_camera():
     if not is_authenticated():
         print("[SocketIO] Rejected unauthenticated start_camera")
         return
+
     print("[SocketIO] start_camera received")
     with camera_lock:
         already = camera_running
@@ -359,6 +374,7 @@ def on_stop_camera():
     if not is_authenticated():
         print("[SocketIO] Rejected unauthenticated stop_camera")
         return
+
     print("[SocketIO] stop_camera received")
     with camera_lock:
         camera_running = False
@@ -378,5 +394,5 @@ if __name__ == "__main__":
         host         = "0.0.0.0",
         port         = 5000,
         debug        = False,
-        use_reloader = False,   # reloader = 2 processes = double camera threads
+        use_reloader = False,
     )
