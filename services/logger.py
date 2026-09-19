@@ -17,12 +17,19 @@ LOG_FILE = os.path.join(
 _log_lock = threading.Lock()
 
 
+def _validate_text(value: str, field: str) -> None:
+    """Validate required log fields."""
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"{field} must be a non-empty string")
+
+
 def log_transaction(pid: str, event: str, details: str = ""):
     """Record a passenger transaction/event safely."""
-    if not pid:
-        raise ValueError("pid is required")
-    if not event:
-        raise ValueError("event is required")
+    _validate_text(pid, "pid")
+    _validate_text(event, "event")
+
+    if not isinstance(details, str):
+        raise TypeError("details must be a string")
 
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     line = f"{timestamp} | {pid} | {event}"
