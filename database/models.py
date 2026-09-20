@@ -139,3 +139,34 @@ def get_all_balances() -> dict:
         return {row["pid"]: row["balance"] for row in rows}
     finally:
         conn.close()
+
+
+def rename_passenger(old_pid: str, new_pid: str):
+    """Rename a passenger while preserving the wallet balance."""
+    if not old_pid or not new_pid:
+        raise ValueError("passenger names are required")
+    conn = get_connection()
+    try:
+        cursor = conn.execute(
+            "UPDATE passengers SET pid = ? WHERE pid = ?",
+            (new_pid, old_pid),
+        )
+        if cursor.rowcount == 0:
+            raise ValueError(f"Passenger not found: {old_pid}")
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def delete_passenger(pid: str):
+    """Delete a passenger record from the wallet database."""
+    if not pid:
+        raise ValueError("pid is required")
+    conn = get_connection()
+    try:
+        cursor = conn.execute("DELETE FROM passengers WHERE pid = ?", (pid,))
+        if cursor.rowcount == 0:
+            raise ValueError(f"Passenger not found: {pid}")
+        conn.commit()
+    finally:
+        conn.close()
