@@ -2,7 +2,6 @@ from deepface import DeepFace
 import numpy as np
 import os
 import re
-import cv2
 
 KNOWN_FACES_DIR = os.path.join(
     os.path.dirname(os.path.dirname(__file__)),
@@ -15,20 +14,38 @@ MATCH_THRESHOLD = 10.0
 known_embeddings = []
 known_names = []
 
-def load_known_faces():
-    """Load embeddings from the enrolled-face directory."""
-    known_embeddings.clear()
-    known_names.clear()
 
+def _face_files():
+    """Yield enrolled image paths with their passenger identifiers."""
     if not os.path.isdir(KNOWN_FACES_DIR):
         return
 
-    for file in sorted(os.listdir(KNOWN_FACES_DIR)):
-        path = os.path.join(KNOWN_FACES_DIR, file)
+    for root, dirs, files in os.walk(KNOWN_FACES_DIR):
+        dirs.sort()
+        for file in sorted(files):
+            path = os.path.join(root, file)
+            if not os.path.isfile(path):
+                continue
 
-        if not os.path.isfile(path):
-            continue
+            if root == KNOWN_FACES_DIR:
+                # Backward compatibility with the original flat layout:
+                # praveen1.jpg, praveen2.jpg -> passenger "praveen".
+                name = re.sub(r"\d+", "", os.path.splitext(file)[0]).strip()
+            else:
+                # New layout:
+                # known_faces/praveen/praveen1.jpg -> passenger "praveen".
+                name = os.path.basename(root).strip()
 
+            if name:
+                yield path, name
+
+
+def load_known_faces():
+    """Load embeddings from flat or per-passenger face directories."""
+    known_embeddings.clear()
+    known_names.clear()
+
+    for path, name in _face_files():
         try:
             embedding = DeepFace.represent(
                 img_path=path,
@@ -36,16 +53,12 @@ def load_known_faces():
                 enforce_detection=False,
             )[0]["embedding"]
 
-            name = os.path.splitext(file)[0]
-            name = re.sub(r"\d+", "", name).strip()
-
-            if not name:
-                continue
-
-            known_embeddings.append(np.asarray(embedding, dtype=np.float32))
+            known_embeddings.append(
+                np.asarray(embedding, dtype=np.float32)
+            )
             known_names.append(name)
         except Exception as exc:
-            print(f"[Recognition] Could not load {file}: {exc}")
+            print(f"[Recognition] Could not load {path}: {exc}")
 
 
 load_known_faces()
