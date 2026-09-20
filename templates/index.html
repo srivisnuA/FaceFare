@@ -599,8 +599,7 @@ const MAX_BAL   = 200;
         status.className = 'enroll-status ok';
         showToast('✓ ' + data.passenger + ' enrolled', 'board');
 
-        setTimeout(closeModal, 700);
-        socket.emit('update');
+        setTimeout(() => window.location.reload(), 700);
       } catch (err) {
         status.textContent = err.message;
         status.className = 'enroll-status err';
