@@ -625,7 +625,22 @@ def on_stop_camera():
 # Run
 # ─────────────────────────────────────────────
 
+def _warm_recognition():
+    """Load enrolled face embeddings without blocking HTTP server startup."""
+    try:
+        load_known_faces()
+        print("[Recognition] Background embedding load complete")
+    except Exception as exc:
+        print(f"[Recognition] Background embedding load failed: {exc}")
+
+
 if __name__ == "__main__":
+    threading.Thread(
+        target=_warm_recognition,
+        daemon=True,
+        name="RecognitionWarmup",
+    ).start()
+
     print("=" * 50)
     print("  FaceFare  →  http://localhost:5000")
     print("=" * 50)
