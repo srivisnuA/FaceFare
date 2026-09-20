@@ -50,19 +50,19 @@ def load_known_faces():
 
         files = list(_face_files())
         for path, name in files:
-        try:
-            embedding = DeepFace.represent(
-                img_path=path,
-                model_name="Facenet",
-                enforce_detection=False,
-            )[0]["embedding"]
+            try:
+                embedding = DeepFace.represent(
+                    img_path=path,
+                    model_name="Facenet",
+                    enforce_detection=False,
+                )[0]["embedding"]
 
-            known_embeddings.append(
-                np.asarray(embedding, dtype=np.float32)
-            )
+                known_embeddings.append(
+                    np.asarray(embedding, dtype=np.float32)
+                )
                 known_names.append(name)
             except Exception as exc:
-            print(f"[Recognition] Could not load {path}: {exc}")
+                print(f"[Recognition] Could not load {path}: {exc}")
 
 
 load_known_faces()
