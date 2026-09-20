@@ -5,14 +5,12 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends libglib2.0-0 libgl1 \
-    && rm -rf /var/lib/apt/lists/*
-
 WORKDIR /app
 
 COPY requirements.txt ./
-RUN python -m pip install --no-cache-dir -r requirements.txt
+RUN python -m pip install --no-cache-dir -r requirements.txt \
+    && python -m pip uninstall -y opencv-python opencv-python-headless \
+    && python -m pip install --no-cache-dir --no-deps opencv-python-headless==4.8.1.78
 
 COPY . .
 
