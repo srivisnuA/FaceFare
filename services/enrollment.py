@@ -14,6 +14,8 @@ KNOWN_FACES_DIR = os.path.join(
 ALLOWED_IMAGE_EXTENSIONS = frozenset({".jpg", ".jpeg", ".png"})
 MAX_PHOTOS_PER_REQUEST = 5
 MAX_PHOTO_BYTES = 10 * 1024 * 1024
+MIN_IMAGE_WIDTH = 160
+MIN_IMAGE_HEIGHT = 160
 MAX_PASSENGER_ID_LENGTH = 50
 
 _PASSENGER_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 _-]{0,49}$")
@@ -77,7 +79,14 @@ def validate_image_file(file) -> str:
 
     try:
         with Image.open(stream) as image:
+            width, height = image.size
+            if width < MIN_IMAGE_WIDTH or height < MIN_IMAGE_HEIGHT:
+                raise ValueError(
+                    f"Each photo must be at least {MIN_IMAGE_WIDTH}x{MIN_IMAGE_HEIGHT} pixels"
+                )
             image.verify()
+    except ValueError:
+        raise
     except (UnidentifiedImageError, OSError):
         raise ValueError("Uploaded file is not a valid image") from None
     finally:
