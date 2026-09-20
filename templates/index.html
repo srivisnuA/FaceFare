@@ -598,6 +598,7 @@ const BASE_FARE = {{ base_fare }};
 const PER_STOP  = {{ per_stop_rate }};
 const MAX_BAL   = 200;
 const CSRF_TOKEN = {{ csrf_token | tojson }};
+const INITIAL_WALLETS = {{ wallets | tojson }};
 
 // ── Init immediately — script is at end of body, DOM is ready ──
 
@@ -1160,6 +1161,10 @@ const CSRF_TOKEN = {{ csrf_token | tojson }};
         <div class="fe-fare">₹${BASE_FARE + d * PER_STOP}</div></div>`;
     document.getElementById('fare-grid').innerHTML = html;
   })();
+
+  // Render the current passengers immediately so management controls are usable
+  // even before the live Socket.IO connection finishes establishing.
+  updateWallets(INITIAL_WALLETS, []);
 
   // ══ SOCKET.IO ═══════════════════════════════════════════════
   const socket = io({
