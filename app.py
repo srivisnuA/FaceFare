@@ -15,7 +15,7 @@ from flask_socketio import SocketIO, emit
 from vision.camera import open_camera
 from vision.recognition import recognize_face, load_known_faces
 from vision.face_detector import detect_faces
-from database.models import get_passengers, get_all_balances, add_passenger
+from database.models import get_passengers, get_all_balances, add_passenger, update_balance
 from services.trip_manager import board, exit_bus
 from services.enrollment import normalize_passenger_id, passenger_directory, save_passenger_photos
 from services.wallet import deduct_balance
@@ -374,6 +374,41 @@ def add_passenger_photos(pid):
     except Exception as exc:
         print(f"[Enrollment] Could not add photos for {pid!r}: {exc}")
         return jsonify({"ok": False, "error": "Could not add passenger photos."}), 409
+
+
+@app.route("/api/passengers/<path:pid>/balance", methods=["PATCH"])
+@login_required
+def update_passenger_balance(pid):
+    """Update an existing passenger's wallet balance from the dashboard."""
+    try:
+        pid = normalize_passenger_id(pid)
+        if pid not in passengers:
+            return jsonify({"ok": False, "error": "Passenger not found."}), 404
+
+        data = request.get_json(silent=True) or {}
+        if "balance" not in data:
+            return jsonify({"ok": False, "error": "Balance is required."}), 400
+
+        try:
+            new_balance = float(data["balance"])
+        except (TypeError, ValueError):
+            return jsonify({"ok": False, "error": "Balance must be a number."}), 400
+
+        update_balance(pid, new_balance)
+        passengers[pid]["balance"] = new_balance
+
+        socketio.emit("update", build_snapshot())
+
+        return jsonify({
+            "ok": True,
+            "passenger": pid,
+            "balance": new_balance,
+        })
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    except Exception as exc:
+        print(f"[Wallet] Could not update balance for {pid!r}: {exc}")
+        return jsonify({"ok": False, "error": "Could not update passenger balance."}), 409
 
 
 @app.route("/control", methods=["POST"])
