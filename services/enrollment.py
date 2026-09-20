@@ -2,7 +2,7 @@ import os
 import re
 import threading
 
-from PIL import Image, UnidentifiedImageError
+from PIL import Image, ImageOps, UnidentifiedImageError
 
 from security.privacy import UNKNOWN_IDENTITIES
 
@@ -144,13 +144,16 @@ def save_passenger_photos(pid: str, files) -> list[str]:
 
         try:
             for file in files:
-                extension = validate_image_file(file)
+                validate_image_file(file)
 
                 path = os.path.join(
                     directory,
-                    f"{pid}{next_index}{extension}",
+                    f"{pid}{next_index}.jpg",
                 )
-                file.save(path)
+                file.stream.seek(0)
+                with Image.open(file.stream) as image:
+                    image = ImageOps.exif_transpose(image).convert("RGB")
+                    image.save(path, format="JPEG", quality=92, optimize=True)
                 saved_paths.append(path)
                 next_index += 1
         except Exception:
