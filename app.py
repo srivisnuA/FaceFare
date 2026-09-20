@@ -376,6 +376,7 @@ def index():
         base_fare     = BASE_FARE,
         per_stop_rate = PER_STOP_RATE,
         csrf_token    = _csrf_token(),
+        wallets       = get_all_balances(),
     )
 
 
