@@ -2,6 +2,7 @@
 # ─────────────────────────────────────────────────────────────────
 import cv2
 import base64
+import numpy as np
 import threading
 import time
 import traceback
@@ -195,24 +196,106 @@ camera_running = False
 camera_lock    = threading.Lock()
 
 
+def _process_frame(frame):
+    """Detect, recognize, annotate, and encode one camera frame."""
+    try:
+        boxes = detect_faces(frame)
+    except Exception as exc:
+        print(f"[Camera] Detection error: {exc}")
+        boxes = []
+
+    recognized = []
+
+    for (x, y, w, h) in boxes:
+        try:
+            crop = frame[y:y+h, x:x+w]
+            if crop.size == 0:
+                continue
+
+            pid = recognize_face(crop)
+
+            if not is_enrolled_passenger(pid):
+                blur_face(frame, x, y, w, h)
+
+            if pid in ("Unknown", "Unknown passenger"):
+                color, label = (0, 165, 255), "Unknown"
+            elif pid in ("No Face", "No passenger detected"):
+                color, label = (60, 60, 220), "No Face"
+            else:
+                color, label = (50, 220, 120), pid
+
+            cv2.rectangle(frame, (x, y), (x+w, y+h), color, 2)
+            (tw, th), bl = cv2.getTextSize(
+                label, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 1
+            )
+            cv2.rectangle(
+                frame, (x, y-th-bl-8), (x+tw+6, y), color, -1
+            )
+            cv2.putText(
+                frame, label, (x+3, y-bl-3),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 1, cv2.LINE_AA
+            )
+
+            if pid in passengers:
+                recognized.append(pid)
+                with state_lock:
+                    entry = handle_passenger(pid, state["current_stop"])
+                    if entry:
+                        state["logs"].append(entry)
+
+        except Exception as exc:
+            print(f"[Camera] Face processing error: {exc}")
+            continue
+
+    ok, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
+    if not ok:
+        raise RuntimeError("Could not encode camera frame")
+
+    return base64.b64encode(buf).decode("utf-8"), recognized
+
+
+def _decode_browser_frame(data):
+    """Decode a browser getUserMedia JPEG/data URL into an OpenCV frame."""
+    if not isinstance(data, str) or not data:
+        raise ValueError("Camera frame is missing")
+
+    encoded = data.split(",", 1)[1] if "," in data else data
+    try:
+        raw = base64.b64decode(encoded, validate=True)
+    except Exception as exc:
+        raise ValueError("Camera frame is invalid") from exc
+
+    if len(raw) > 2 * 1024 * 1024:
+        raise ValueError("Camera frame is too large")
+
+    frame = cv2.imdecode(np.frombuffer(raw, dtype=np.uint8), cv2.IMREAD_COLOR)
+    if frame is None:
+        raise ValueError("Camera frame could not be decoded")
+
+    return frame
+
+
 def camera_thread():
     global camera_running
     print("[Camera] Thread started")
 
     try:
         cam = open_camera()
-    except Exception as e:
-        print(f"[Camera] open_camera() crashed: {e}")
+    except Exception as exc:
+        print(f"[Camera] open_camera() crashed: {exc}")
         traceback.print_exc()
-        socketio.emit("camera_error",  {"msg": f"open_camera() failed: {e}"})
+        socketio.emit("camera_error", {"msg": f"Local camera unavailable: {exc}"})
         socketio.emit("camera_status", {"running": False})
         with camera_lock:
             camera_running = False
         return
 
     if cam is None or not cam.isOpened():
-        print("[Camera] Camera not opened — check device index in open_camera()")
-        socketio.emit("camera_error",  {"msg": "Camera could not be opened. Check device index."})
+        print("[Camera] Camera not opened")
+        socketio.emit(
+            "camera_error",
+            {"msg": "Local server camera could not be opened."},
+        )
         socketio.emit("camera_status", {"running": False})
         with camera_lock:
             camera_running = False
@@ -233,60 +316,16 @@ def camera_thread():
                 break
 
             try:
-                boxes = detect_faces(frame)
-            except Exception as e:
-                print(f"[Camera] Detection error: {e}")
-                boxes = []
-
-            recognized = []
-
-            for (x, y, w, h) in boxes:
-                try:
-                    crop = frame[y:y+h, x:x+w]
-                    if crop.size == 0:
-                        continue
-
-                    pid = recognize_face(crop)
-
-                    if not is_enrolled_passenger(pid):
-                        blur_face(frame, x, y, w, h)
-
-                    if pid in ("Unknown", "Unknown passenger"):
-                        color, label = (0, 165, 255), "Unknown"
-                    elif pid in ("No Face", "No passenger detected"):
-                        color, label = (60, 60, 220), "No Face"
-                    else:
-                        color, label = (50, 220, 120), pid
-
-                    cv2.rectangle(frame, (x, y), (x+w, y+h), color, 2)
-                    (tw, th), bl = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 1)
-                    cv2.rectangle(frame, (x, y-th-bl-8), (x+tw+6, y), color, -1)
-                    cv2.putText(frame, label, (x+3, y-bl-3),
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,0,0), 1, cv2.LINE_AA)
-
-                    if pid in passengers:
-                        recognized.append(pid)
-                        with state_lock:
-                            entry = handle_passenger(pid, state["current_stop"])
-                            if entry:
-                                state["logs"].append(entry)
-
-                except Exception as e:
-                    print(f"[Camera] Face processing error: {e}")
-                    continue
-
-            try:
-                _, buf    = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 75])
-                b64_frame = base64.b64encode(buf).decode("utf-8")
-                socketio.emit("frame",  {"img": b64_frame})
+                b64_frame, recognized = _process_frame(frame)
+                socketio.emit("frame", {"img": b64_frame})
                 socketio.emit("update", build_snapshot(recognized))
-            except Exception as e:
-                print(f"[Camera] Emit error: {e}")
+            except Exception as exc:
+                print(f"[Camera] Frame processing error: {exc}")
 
             time.sleep(0.033)
 
-    except Exception as e:
-        print(f"[Camera] Unexpected crash: {e}")
+    except Exception as exc:
+        print(f"[Camera] Unexpected crash: {exc}")
         traceback.print_exc()
 
     finally:
@@ -346,6 +385,12 @@ def create_passenger():
         initial_balance = float(balance_raw)
         if not initial_balance >= 0:
             raise ValueError("Initial balance must be non-negative")
+
+        if pid in passengers:
+            return jsonify({
+                "ok": False,
+                "error": f"Passenger '{pid}' already exists. Use + PHOTOS to add more face photos.",
+            }), 409
 
         saved_paths = save_passenger_photos(pid, files)
 
@@ -620,6 +665,24 @@ def on_connect():
 @socketio.on("disconnect")
 def on_disconnect():
     print(f"[SocketIO] Client disconnected: {request.sid}")
+
+
+@socketio.on("browser_frame")
+def on_browser_frame(data):
+    """Process a frame captured by the authenticated browser camera."""
+    if not is_authenticated():
+        return
+
+    try:
+        frame = _decode_browser_frame((data or {}).get("img"))
+        b64_frame, recognized = _process_frame(frame)
+        emit("frame", {"img": b64_frame})
+        emit("update", build_snapshot(recognized))
+    except ValueError as exc:
+        emit("camera_error", {"msg": str(exc)})
+    except Exception as exc:
+        print(f"[Camera] Browser frame error: {exc}")
+        emit("camera_error", {"msg": "Could not process browser camera frame."})
 
 
 @socketio.on("start_camera")
