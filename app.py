@@ -86,6 +86,13 @@ state = {
 
 passengers = get_passengers()
 
+# Load enrolled face embeddings when the server starts. Without this,
+# recognize_face() has no reference embeddings until a passenger is added/edited.
+try:
+    load_known_faces()
+except Exception as exc:
+    print(f"[Recognition] Startup load failed: {exc}")
+
 
 def refresh_passenger_cache():
     """Refresh the in-memory passenger cache from SQLite before management operations."""
