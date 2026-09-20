@@ -634,6 +634,30 @@ const MAX_BAL   = 200;
     };
   })();
 
+  async function editPassengerBalance(pid, currentBalance) {
+    const raw = window.prompt('Enter new wallet balance for ' + pid + ':', String(currentBalance));
+    if (raw === null) return;
+
+    const value = Number(raw);
+    if (!Number.isFinite(value) || value < 0) {
+      showToast('Enter a valid non-negative balance.', 'declined');
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/passengers/' + encodeURIComponent(pid) + '/balance', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ balance: value })
+      });
+      const data = await response.json();
+      if (!response.ok || !data.ok) throw new Error(data.error || 'Could not update balance.');
+      showToast('✓ ' + pid + ' balance updated to ₹' + data.balance, 'board');
+    } catch (err) {
+      showToast(err.message, 'declined');
+    }
+  }
+
   // ══ EXISTING PASSENGER PHOTO UI ═══════════════════════════════
   const photoModal = document.getElementById('photo-modal');
   const photoForm = document.getElementById('photo-form');
@@ -986,7 +1010,7 @@ const MAX_BAL   = 200;
       const trips     = tripCounts[pid] || 0;
       const spent     = passengerRev[pid] || 0;
       return `<div class="${cardCls}">
-        <div class="w-row1"><div class="w-pid">${pid}</div><div style="display:flex;align-items:center;gap:6px"><button class="enroll-btn" type="button" onclick="openPhotoModal(${JSON.stringify(pid)})">＋ PHOTOS</button><div class="w-chip ${chipCls}">${chipTxt}</div></div></div>
+        <div class="w-row1"><div class="w-pid">${pid}</div><div style="display:flex;align-items:center;gap:6px"><button class="enroll-btn" type="button" onclick="editPassengerBalance(${JSON.stringify(pid)}, ${bal})">₹ EDIT</button><button class="enroll-btn" type="button" onclick="openPhotoModal(${JSON.stringify(pid)})">＋ PHOTOS</button><div class="w-chip ${chipCls}">${chipTxt}</div></div></div>
         <div class="w-row2">
           <div class="${balCls}${flash}">₹${bal}</div>
           <div class="w-meta"><div class="w-trips">${trips} trip${trips!==1?'s':''}</div><div class="w-spent">₹${spent} spent</div></div>
