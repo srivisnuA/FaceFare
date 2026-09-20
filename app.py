@@ -8,6 +8,7 @@ import time
 import traceback
 import os
 import re
+import shutil
 import secrets
 from functools import wraps
 from hmac import compare_digest
@@ -20,7 +21,14 @@ from flask_socketio import SocketIO, emit
 from vision.camera import open_camera
 from vision.recognition import recognize_face, load_known_faces
 from vision.face_detector import detect_faces
-from database.models import get_passengers, get_all_balances, add_passenger, update_balance
+from database.models import (
+    get_passengers,
+    get_all_balances,
+    add_passenger,
+    update_balance,
+    rename_passenger,
+    delete_passenger,
+)
 from services.trip_manager import board, exit_bus
 from services.enrollment import normalize_passenger_id, passenger_directory, save_passenger_photos, ENROLLMENT_LOCK
 from services.wallet import deduct_balance
@@ -425,6 +433,120 @@ def create_passenger():
     except Exception as exc:
         print(f"[Enrollment] Could not create passenger: {exc}")
         return jsonify({"ok": False, "error": "Could not create passenger."}), 409
+
+
+@app.route("/api/passengers/<path:pid>", methods=["PATCH"])
+@login_required
+@csrf_protect
+def edit_passenger(pid):
+    """Edit a passenger name and/or wallet balance."""
+    with ENROLLMENT_LOCK:
+        try:
+            old_pid = normalize_passenger_id(pid)
+            if old_pid not in passengers:
+                return jsonify({"ok": False, "error": "Passenger not found."}), 404
+
+            data = request.get_json(silent=True) or {}
+            new_pid = normalize_passenger_id(data.get("name", old_pid))
+
+            try:
+                new_balance = float(data.get("balance", passengers[old_pid]["balance"]))
+            except (TypeError, ValueError):
+                return jsonify({"ok": False, "error": "Balance must be a number."}), 400
+
+            if new_pid != old_pid and new_pid in passengers:
+                return jsonify({"ok": False, "error": f"Passenger '{new_pid}' already exists."}), 409
+
+            old_dir = passenger_directory(old_pid)
+            new_dir = passenger_directory(new_pid)
+            moved_dir = False
+
+            if new_pid != old_pid and os.path.exists(old_dir):
+                if os.path.exists(new_dir):
+                    return jsonify({"ok": False, "error": "Target passenger photo folder already exists."}), 409
+                os.rename(old_dir, new_dir)
+                moved_dir = True
+
+            try:
+                if new_pid != old_pid:
+                    rename_passenger(old_pid, new_pid)
+                update_balance(new_pid, new_balance)
+            except Exception:
+                if moved_dir and os.path.exists(new_dir) and not os.path.exists(old_dir):
+                    os.rename(new_dir, old_dir)
+                raise
+
+            passenger_data = passengers.pop(old_pid)
+            passenger_data["balance"] = new_balance
+            passengers[new_pid] = passenger_data
+
+            with state_lock:
+                state["onboard"] = [new_pid if p == old_pid else p for p in state["onboard"]]
+                if old_pid in state["boarding_stop"]:
+                    state["boarding_stop"][new_pid] = state["boarding_stop"].pop(old_pid)
+
+            load_known_faces()
+            socketio.emit("update", build_snapshot())
+
+            return jsonify({
+                "ok": True,
+                "passenger": new_pid,
+                "balance": new_balance,
+            })
+        except ValueError as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+        except Exception as exc:
+            print(f"[Passenger] Could not edit {pid!r}: {exc}")
+            return jsonify({"ok": False, "error": "Could not edit passenger."}), 409
+
+
+@app.route("/api/passengers/<path:pid>", methods=["DELETE"])
+@login_required
+@csrf_protect
+def remove_passenger(pid):
+    """Delete a passenger, wallet record, and enrolled face directory."""
+    with ENROLLMENT_LOCK:
+        try:
+            pid = normalize_passenger_id(pid)
+            if pid not in passengers:
+                return jsonify({"ok": False, "error": "Passenger not found."}), 404
+
+            with state_lock:
+                if pid in state["onboard"]:
+                    return jsonify({
+                        "ok": False,
+                        "error": "Passenger is currently onboard. Exit them before deleting.",
+                    }), 409
+
+            directory = passenger_directory(pid)
+            tombstone = None
+            if os.path.isdir(directory):
+                tombstone = directory + f".deleting-{secrets.token_hex(6)}"
+                os.rename(directory, tombstone)
+
+            try:
+                delete_passenger(pid)
+            except Exception:
+                if tombstone and os.path.exists(tombstone):
+                    os.rename(tombstone, directory)
+                raise
+
+            if tombstone:
+                shutil.rmtree(tombstone, ignore_errors=True)
+
+            passengers.pop(pid, None)
+            with state_lock:
+                state["boarding_stop"].pop(pid, None)
+
+            load_known_faces()
+            socketio.emit("update", build_snapshot())
+
+            return jsonify({"ok": True, "passenger": pid})
+        except ValueError as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+        except Exception as exc:
+            print(f"[Passenger] Could not delete {pid!r}: {exc}")
+            return jsonify({"ok": False, "error": "Could not delete passenger."}), 409
 
 
 @app.route("/api/passengers/<path:pid>/photos", methods=["POST"])
