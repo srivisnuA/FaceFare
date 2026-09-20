@@ -60,7 +60,8 @@ FaceFare/
 ├── config.py
 ├── requirements.txt
 ├── assets/
-│   └── known_faces/         # Runtime-enrolled face images (ignored by Git)
+│   └── known_faces/         # Optional legacy local enrollment layout
+├── data/                    # Persistent runtime data (ignored by Git)
 ├── database/
 │   ├── db.py                # SQLite connection and initialization
 │   └── models.py            # Passenger/wallet operations
@@ -117,17 +118,19 @@ pip install -r requirements.txt
 
 After logging in, use **＋ ADD** in the Wallet Balances panel to create a passenger, set the initial wallet balance, and upload 1–5 face photos.
 
-Photos are stored automatically as:
+Photos are stored automatically in the runtime data directory as:
 
 ```text
-assets/known_faces/praveen/praveen1.jpg
-assets/known_faces/praveen/praveen2.jpg
-assets/known_faces/praveen/praveen3.jpg
+data/known_faces/praveen/praveen1.jpg
+data/known_faces/praveen/praveen2.jpg
+data/known_faces/praveen/praveen3.jpg
 ```
+
+The database is stored alongside this data at `data/facefare.db`. Set `FACEFARE_DATA_DIR` to a mounted persistent directory in hosted environments so passenger wallets and enrolled biometric files survive redeploys and restarts.
 
 Existing passengers can use **＋ PHOTOS** to add more images, view enrolled filenames, or delete an image. The system keeps at least one enrolled image and reloads recognition after photo changes, so no application restart is required.
 
-Uploaded images are validated for type, size and dimensions, then normalized to JPEG. The `assets/known_faces/` directory is ignored by Git to reduce the risk of committing biometric photos.
+Uploaded images are validated for type, size and dimensions, then normalized to JPEG. The runtime data directory is ignored by Git to reduce the risk of committing biometric files or local passenger data.
 
 ### 5. Start the application
 
