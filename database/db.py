@@ -8,7 +8,13 @@
 import sqlite3
 import os
 
-DB_PATH = os.path.join(os.path.dirname(__file__), "facefare.db")
+PROJECT_ROOT = os.path.dirname(os.path.dirname(__file__))
+DATA_DIR = os.environ.get(
+    "FACEFARE_DATA_DIR",
+    os.path.join(PROJECT_ROOT, "data"),
+)
+os.makedirs(DATA_DIR, exist_ok=True)
+DB_PATH = os.path.join(DATA_DIR, "facefare.db")
 
 # Seed data used only the very first time the DB is created.
 DEFAULT_PASSENGERS = {
