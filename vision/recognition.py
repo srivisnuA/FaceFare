@@ -65,8 +65,6 @@ def load_known_faces():
                 print(f"[Recognition] Could not load {path}: {exc}")
 
 
-load_known_faces()
-
 
 def recognize_face(frame):
     """Return the best enrolled passenger match for a face crop."""
