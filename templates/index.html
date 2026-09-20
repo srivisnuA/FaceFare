@@ -129,7 +129,10 @@ body::after{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
 /* ── Camera col ── */
 .cam-col{display:flex;flex-direction:column;gap:10px}
 .cam-viewport{position:relative;background:#010508;flex:1;overflow:hidden;min-height:300px;display:flex;align-items:center;justify-content:center}
-.cam-feed{width:100%;display:block;object-fit:cover}
+.cam-viewport > video#browser-camera,
+.cam-feed{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.cam-viewport > video#browser-camera{z-index:0;opacity:0;pointer-events:none}
+.cam-feed{display:block;z-index:1}
 .cam-placeholder{display:flex;flex-direction:column;align-items:center;gap:10px;color:var(--muted);font-family:var(--mono);font-size:.75rem}
 .cam-placeholder .big-icon{font-size:3rem;opacity:.2}
 .scan-line{position:absolute;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,var(--cyan),transparent);opacity:0;top:0;animation:scanDown 3s linear infinite}
@@ -1023,6 +1026,8 @@ const INITIAL_WALLETS = {{ wallets | tojson }};
       const video = document.getElementById('browser-camera');
       video.srcObject = browserCameraStream;
       video.style.display = 'block';
+      video.style.opacity = '0';
+      video.style.pointerEvents = 'none';
       await video.play();
 
       const canvas = document.createElement('canvas');
