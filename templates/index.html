@@ -1074,6 +1074,8 @@ const CSRF_TOKEN = {{ csrf_token | tojson }};
   // ══ CHART.JS (optional — dashboard controls must work without the CDN) ══
   let cRevLine = null, cFareLine = null, cBoardStop = null;
   let cBar = null, cDonut = null, cPie = null;
+  const COLORS = ['rgba(56,189,248,.75)','rgba(52,211,153,.75)','rgba(251,191,36,.75)',
+                  'rgba(167,139,250,.75)','rgba(248,113,113,.75)','rgba(244,114,182,.75)'];
 
   if (typeof Chart !== 'undefined') {
     Chart.defaults.color       = '#3d6080';
@@ -1082,9 +1084,6 @@ const CSRF_TOKEN = {{ csrf_token | tojson }};
 
     const gridStyle  = { color: 'rgba(56,189,248,.06)' };
     const tickStyle  = { color: '#3d6080', maxRotation: 0 };
-    const COLORS     = ['rgba(56,189,248,.75)','rgba(52,211,153,.75)','rgba(251,191,36,.75)',
-                        'rgba(167,139,250,.75)','rgba(248,113,113,.75)','rgba(244,114,182,.75)'];
-
     function safeChart(id, config) {
       const el = document.getElementById(id);
       if (!el) return null;
