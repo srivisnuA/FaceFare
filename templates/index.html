@@ -549,6 +549,7 @@ const STOPS     = {{ stops | tojson }};
 const BASE_FARE = {{ base_fare }};
 const PER_STOP  = {{ per_stop_rate }};
 const MAX_BAL   = 200;
+const CSRF_TOKEN = {{ csrf_token | tojson }};
 
 // ── Init immediately — script is at end of body, DOM is ready ──
 
@@ -616,6 +617,7 @@ const MAX_BAL   = 200;
       try {
         const response = await fetch('/api/passengers', {
           method: 'POST',
+          headers: { 'X-CSRF-Token': CSRF_TOKEN },
           body: new FormData(form)
         });
         const data = await response.json();
@@ -651,7 +653,7 @@ const MAX_BAL   = 200;
     try {
       const response = await fetch('/api/passengers/' + encodeURIComponent(pid) + '/balance', {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF_TOKEN },
         body: JSON.stringify({ balance: value })
       });
       const data = await response.json();
@@ -716,7 +718,7 @@ const MAX_BAL   = 200;
     try {
       const response = await fetch('/api/passengers/' + encodeURIComponent(pid) + '/photos', {
         method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF_TOKEN },
         body: JSON.stringify({ photos: [filename] })
       });
       const data = await response.json();
@@ -766,6 +768,7 @@ const MAX_BAL   = 200;
     try {
       const response = await fetch('/api/passengers/' + encodeURIComponent(pid) + '/photos', {
         method: 'POST',
+        headers: { 'X-CSRF-Token': CSRF_TOKEN },
         body: new FormData(photoForm)
       });
       const data = await response.json();
@@ -806,7 +809,7 @@ const MAX_BAL   = 200;
   function sendControl(action) {
     fetch('/control', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF_TOKEN },
       body: JSON.stringify({ action })
     })
     .then(r => r.json())
