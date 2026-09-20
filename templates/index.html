@@ -345,7 +345,11 @@ body::after{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
         <input id="photo-passenger" type="text" readonly>
       </div>
       <div class="enroll-field">
-        <label for="extra-photos">Face photos</label>
+        <label>Enrolled photos</label>
+        <div id="photo-list" class="enroll-help">Loading enrolled photos…</div>
+      </div>
+      <div class="enroll-field">
+        <label for="extra-photos">Add face photos</label>
         <input id="extra-photos" name="photos" type="file" accept=".jpg,.jpeg,.png,image/jpeg,image/png" multiple required>
         <div class="enroll-help">Upload 1–5 additional clear face photos. Recognition updates automatically.</div>
       </div>
@@ -676,10 +680,62 @@ const MAX_BAL   = 200;
     photoSubmit.textContent = 'ADD PHOTOS';
   }
 
+  const photoList = document.getElementById('photo-list');
+
+  function renderEnrolledPhotos(pid, photos) {
+    if (!photos.length) {
+      photoList.textContent = 'No enrolled photos found.';
+      return;
+    }
+    photoList.innerHTML = photos.map(filename =>
+      '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 8px;margin-top:4px;background:var(--s2);border:1px solid var(--border);border-radius:6px">' +
+      '<span style="font-family:var(--mono);font-size:.62rem;color:var(--text2);overflow:hidden;text-overflow:ellipsis">' + filename + '</span>' +
+      '<button class="enroll-btn" type="button" onclick="deletePassengerPhoto(' + JSON.stringify(pid) + ', ' + JSON.stringify(filename) + ')">DELETE</button>' +
+      '</div>'
+    ).join('');
+  }
+
+  async function loadEnrolledPhotos(pid) {
+    photoList.textContent = 'Loading enrolled photos…';
+    try {
+      const response = await fetch('/api/passengers/' + encodeURIComponent(pid) + '/photos');
+      const data = await response.json();
+      if (!response.ok || !data.ok) throw new Error(data.error || 'Could not load photos.');
+      renderEnrolledPhotos(pid, data.photos || []);
+    } catch (err) {
+      photoList.textContent = err.message;
+    }
+  }
+
+  async function deletePassengerPhoto(pid, filename) {
+    if (!window.confirm('Delete ' + filename + '?')) return;
+
+    photoStatus.textContent = 'Deleting ' + filename + '…';
+    photoStatus.className = 'enroll-status';
+
+    try {
+      const response = await fetch('/api/passengers/' + encodeURIComponent(pid) + '/photos', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ photos: [filename] })
+      });
+      const data = await response.json();
+      if (!response.ok || !data.ok) throw new Error(data.error || 'Could not delete photo.');
+      photoStatus.textContent = filename + ' deleted successfully.';
+      photoStatus.className = 'enroll-status ok';
+      showToast('✓ ' + filename + ' deleted', 'board');
+      await loadEnrolledPhotos(pid);
+    } catch (err) {
+      photoStatus.textContent = err.message;
+      photoStatus.className = 'enroll-status err';
+    }
+  }
+
   function openPhotoModal(pid) {
     photoPassenger.value = pid;
     photoModal.classList.add('open');
     photoModal.setAttribute('aria-hidden', 'false');
+    loadEnrolledPhotos(pid);
     document.getElementById('extra-photos').focus();
   }
 
