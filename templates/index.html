@@ -851,7 +851,7 @@ const INITIAL_WALLETS = {{ wallets | tojson }};
         '<img class="enrolled-photo-thumb" src="' + photoUrl + '" alt="' + filename + '" loading="lazy">' +
         '<div class="enrolled-photo-meta">' +
           '<span class="enrolled-photo-name" title="' + filename + '">' + filename + '</span>' +
-          '<button class="enroll-btn" type="button" onclick="deletePassengerPhoto(' + JSON.stringify(pid) + ', ' + JSON.stringify(filename) + ')">DELETE</button>' +
+          '<button class="enroll-btn" type="button" onclick=\'deletePassengerPhoto(' + JSON.stringify(pid) + ', ' + JSON.stringify(filename) + ')\'>DELETE</button>' +
         '</div>' +
       '</div>';
     }).join('') + '</div>';
@@ -1335,7 +1335,7 @@ const INITIAL_WALLETS = {{ wallets | tojson }};
       const trips     = tripCounts[pid] || 0;
       const spent     = passengerRev[pid] || 0;
       return `<div class="${cardCls}">
-        <div class="w-row1"><div class="w-pid">${pid}</div><div style="display:flex;align-items:center;gap:6px"><button class="enroll-btn" type="button" onclick="editPassenger(${JSON.stringify(pid)}, ${bal})">EDIT</button><button class="enroll-btn" type="button" onclick="openPhotoModal(${JSON.stringify(pid)})">＋ PHOTOS</button><button class="enroll-btn" type="button" style="border-color:rgba(248,113,113,.35);color:var(--red);background:rgba(248,113,113,.07)" onclick="deletePassenger(${JSON.stringify(pid)})">DELETE</button><div class="w-chip ${chipCls}">${chipTxt}</div></div></div>
+        <div class="w-row1"><div class="w-pid">${pid}</div><div style="display:flex;align-items:center;gap:6px"><button class="enroll-btn" type="button" onclick='editPassenger(${JSON.stringify(pid)}, ${bal})'>EDIT</button><button class="enroll-btn" type="button" onclick='openPhotoModal(${JSON.stringify(pid)})'>＋ PHOTOS</button><button class="enroll-btn" type="button" style="border-color:rgba(248,113,113,.35);color:var(--red);background:rgba(248,113,113,.07)" onclick='deletePassenger(${JSON.stringify(pid)})'>DELETE</button><div class="w-chip ${chipCls}">${chipTxt}</div></div></div>
         <div class="w-row2">
           <div class="${balCls}${flash}">₹${bal}</div>
           <div class="w-meta"><div class="w-trips">${trips} trip${trips!==1?'s':''}</div><div class="w-spent">₹${spent} spent</div></div>
