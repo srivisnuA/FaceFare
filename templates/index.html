@@ -279,11 +279,59 @@ body::after{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
 .ctrl-btn.active-exit  { background: rgba(248,113,113,0.2) !important; }
 .ctrl-btn.cam-live     { color: #f87171; border-color: #f87171; }
 
+
+/* ── Passenger enrollment modal ── */
+.enroll-btn{font-family:var(--mono);font-size:.58rem;font-weight:700;letter-spacing:.08em;padding:5px 8px;border-radius:7px;border:1px solid rgba(56,189,248,.3);background:rgba(56,189,248,.08);color:var(--cyan);cursor:pointer}
+.enroll-btn:hover{background:rgba(56,189,248,.16);border-color:var(--cyan)}
+.enroll-modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.72);backdrop-filter:blur(8px);z-index:2000;align-items:center;justify-content:center;padding:20px}
+.enroll-modal.open{display:flex}
+.enroll-card{width:min(520px,100%);background:var(--s1);border:1px solid var(--border2);border-radius:var(--r);box-shadow:0 20px 70px rgba(0,0,0,.6);overflow:hidden}
+.enroll-head{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--border)}
+.enroll-title{font-family:var(--mono);font-size:.68rem;color:var(--cyan);letter-spacing:.16em;text-transform:uppercase}
+.enroll-close{border:0;background:transparent;color:var(--muted);font-size:1.2rem;cursor:pointer}
+.enroll-body{padding:16px;display:grid;gap:12px}
+.enroll-field{display:grid;gap:6px}
+.enroll-field label{font-family:var(--mono);font-size:.58rem;color:var(--muted);letter-spacing:.12em;text-transform:uppercase}
+.enroll-field input{width:100%;background:var(--s2);border:1px solid var(--border2);border-radius:8px;padding:9px 10px;color:var(--text);font:500 .78rem var(--font);outline:none}
+.enroll-field input:focus{border-color:var(--cyan)}
+.enroll-help{font-size:.65rem;color:var(--muted);line-height:1.5}
+.enroll-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:4px}
+.enroll-status{min-height:18px;font-family:var(--mono);font-size:.62rem;color:var(--muted)}
+.enroll-status.ok{color:var(--green)} .enroll-status.err{color:var(--red)}
 </style>
 </head>
 <body>
 
 <div class="toast-stack" id="toastStack"></div>
+
+<div class="enroll-modal" id="enroll-modal" aria-hidden="true">
+  <div class="enroll-card">
+    <div class="enroll-head">
+      <div class="enroll-title">Enroll Passenger</div>
+      <button class="enroll-close" id="enroll-close" type="button" aria-label="Close">×</button>
+    </div>
+    <form class="enroll-body" id="enroll-form">
+      <div class="enroll-field">
+        <label for="passenger-name">Passenger name</label>
+        <input id="passenger-name" name="name" type="text" maxlength="50" placeholder="e.g. Praveen" required>
+      </div>
+      <div class="enroll-field">
+        <label for="initial-balance">Initial wallet balance</label>
+        <input id="initial-balance" name="initial_balance" type="number" min="0" step="0.01" value="100" required>
+      </div>
+      <div class="enroll-field">
+        <label for="passenger-photos">Face photos</label>
+        <input id="passenger-photos" name="photos" type="file" accept=".jpg,.jpeg,.png,image/jpeg,image/png" multiple required>
+        <div class="enroll-help">Upload 1–5 clear face photos. They will be stored automatically as <b>name1.jpg</b>, <b>name2.jpg</b>, etc. inside that passenger's folder.</div>
+      </div>
+      <div class="enroll-status" id="enroll-status"></div>
+      <div class="enroll-actions">
+        <button class="ctrl-btn blue" id="enroll-cancel" type="button">CANCEL</button>
+        <button class="ctrl-btn green" id="enroll-submit" type="submit">ENROLL</button>
+      </div>
+    </form>
+  </div>
+</div>
 
 <div class="app">
 
@@ -417,7 +465,10 @@ body::after{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
       <div class="panel" style="flex:1">
         <div class="panel-head">
           <div class="ph-title"><span class="ph-dot" style="background:var(--green)"></span>WALLET BALANCES</div>
-          <span style="font-family:var(--mono);font-size:.6rem;color:var(--muted)" id="wallet-total">₹0 total</span>
+          <div style="display:flex;align-items:center;gap:7px">
+            <button class="enroll-btn" id="btn-add-passenger" type="button">＋ ADD</button>
+            <span style="font-family:var(--mono);font-size:.6rem;color:var(--muted)" id="wallet-total">₹0 total</span>
+          </div>
         </div>
         <div class="panel-body" style="overflow-y:auto;max-height:380px">
           <div class="wallet-list" id="wallet-list">
@@ -481,6 +532,83 @@ const MAX_BAL   = 200;
   let passengerRev = {};
   let tripCounts   = {};
   const _prev      = {};
+
+  // ══ PASSENGER ENROLLMENT UI ═══════════════════════════════════
+  (function wireEnrollment() {
+    const modal = document.getElementById('enroll-modal');
+    const form = document.getElementById('enroll-form');
+    const status = document.getElementById('enroll-status');
+    const addBtn = document.getElementById('btn-add-passenger');
+    const closeBtn = document.getElementById('enroll-close');
+    const cancelBtn = document.getElementById('enroll-cancel');
+    const submitBtn = document.getElementById('enroll-submit');
+
+    function closeModal() {
+      modal.classList.remove('open');
+      modal.setAttribute('aria-hidden', 'true');
+      form.reset();
+      document.getElementById('initial-balance').value = '100';
+      status.textContent = '';
+      status.className = 'enroll-status';
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'ENROLL';
+    }
+
+    function openModal() {
+      modal.classList.add('open');
+      modal.setAttribute('aria-hidden', 'false');
+      document.getElementById('passenger-name').focus();
+    }
+
+    addBtn.onclick = openModal;
+    closeBtn.onclick = closeModal;
+    cancelBtn.onclick = closeModal;
+    modal.onclick = e => { if (e.target === modal) closeModal(); };
+
+    form.onsubmit = async function(e) {
+      e.preventDefault();
+      const files = document.getElementById('passenger-photos').files;
+      if (!files.length) {
+        status.textContent = 'Select at least one face photo.';
+        status.className = 'enroll-status err';
+        return;
+      }
+      if (files.length > 5) {
+        status.textContent = 'Select a maximum of 5 photos.';
+        status.className = 'enroll-status err';
+        return;
+      }
+
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'ENROLLING…';
+      status.textContent = 'Saving passenger and face photos…';
+      status.className = 'enroll-status';
+
+      try {
+        const response = await fetch('/api/passengers', {
+          method: 'POST',
+          body: new FormData(form)
+        });
+        const data = await response.json();
+
+        if (!response.ok || !data.ok) {
+          throw new Error(data.error || 'Enrollment failed.');
+        }
+
+        status.textContent = data.passenger + ' enrolled successfully.';
+        status.className = 'enroll-status ok';
+        showToast('✓ ' + data.passenger + ' enrolled', 'board');
+
+        setTimeout(closeModal, 700);
+        socket.emit('update');
+      } catch (err) {
+        status.textContent = err.message;
+        status.className = 'enroll-status err';
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'ENROLL';
+      }
+    };
+  })();
 
   // ══ BUTTON WIRING — direct getElementById, no delegation needed ══
   (function wireButtons() {
