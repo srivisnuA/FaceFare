@@ -3,6 +3,8 @@
 # Passenger data access layer backed by SQLite.
 # ─────────────────────────────────────────────────────────────────
 
+import math
+
 from database.db import get_connection, init_db
 
 init_db()
@@ -13,6 +15,7 @@ def _valid_balance(value) -> bool:
     return (
         isinstance(value, (int, float))
         and not isinstance(value, bool)
+        and math.isfinite(value)
         and value >= 0
     )
 
