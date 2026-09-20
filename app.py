@@ -98,7 +98,7 @@ def build_snapshot(recognized=None):
             "current_stop": state["current_stop"],
             "stop_name":    BUS_STOPS[state["current_stop"]],
             "onboard":      list(state["onboard"]),
-            "logs":          list(state["logs"][-50:]),
+            "logs":         list(state["logs"][-50:]),
             "revenue":      state["revenue"],
             "wallets":      get_all_balances(),
             "recognized":   list(recognized),
@@ -348,6 +348,32 @@ def create_passenger():
     except Exception as exc:
         print(f"[Enrollment] Could not create passenger: {exc}")
         return jsonify({"ok": False, "error": "Could not create passenger."}), 409
+
+
+@app.route("/api/passengers/<path:pid>/photos", methods=["POST"])
+@login_required
+def add_passenger_photos(pid):
+    """Add face photos to an existing passenger and reload recognition."""
+    try:
+        pid = normalize_passenger_id(pid)
+        if pid not in passengers:
+            return jsonify({"ok": False, "error": "Passenger not found."}), 404
+
+        files = request.files.getlist("photos")
+        saved_paths = save_passenger_photos(pid, files)
+        load_known_faces()
+
+        return jsonify({
+            "ok": True,
+            "passenger": pid,
+            "photos": [os.path.basename(path) for path in saved_paths],
+        }), 201
+
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    except Exception as exc:
+        print(f"[Enrollment] Could not add photos for {pid!r}: {exc}")
+        return jsonify({"ok": False, "error": "Could not add passenger photos."}), 409
 
 
 @app.route("/control", methods=["POST"])
