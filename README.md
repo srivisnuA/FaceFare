@@ -60,7 +60,7 @@ FaceFare/
 ├── config.py
 ├── requirements.txt
 ├── assets/
-│   └── known_faces/         # Reference face images
+│   └── known_faces/         # Runtime-enrolled face images (ignored by Git)
 ├── database/
 │   ├── db.py                # SQLite connection and initialization
 │   └── models.py            # Passenger/wallet operations
@@ -113,11 +113,21 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 4. Add known faces
+### 4. Enroll passengers from the dashboard
 
-Place reference images for enrolled passengers under `assets/known_faces/`.
+After logging in, use **＋ ADD** in the Wallet Balances panel to create a passenger, set the initial wallet balance, and upload 1–5 face photos.
 
-The filename is used as the passenger identifier after numeric characters are removed. Make sure the resulting identifier matches a passenger in the SQLite database.
+Photos are stored automatically as:
+
+```text
+assets/known_faces/praveen/praveen1.jpg
+assets/known_faces/praveen/praveen2.jpg
+assets/known_faces/praveen/praveen3.jpg
+```
+
+Existing passengers can use **＋ PHOTOS** to add more images, view enrolled filenames, or delete an image. The system keeps at least one enrolled image and reloads recognition after photo changes, so no application restart is required.
+
+Uploaded images are validated for type, size and dimensions, then normalized to JPEG. The `assets/known_faces/` directory is ignored by Git to reduce the risk of committing biometric photos.
 
 ### 5. Start the application
 
@@ -126,6 +136,20 @@ python app.py
 ```
 
 Then open `http://localhost:5000` in your browser.
+
+## Passenger Management API
+
+All passenger-management endpoints require an authenticated dashboard session and the dashboard's CSRF token.
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| POST | `/api/passengers` | Create a passenger, wallet, and enrolled face photos |
+| GET | `/api/passengers/<pid>/photos` | List enrolled photo filenames |
+| POST | `/api/passengers/<pid>/photos` | Add more enrolled face photos |
+| DELETE | `/api/passengers/<pid>/photos` | Delete selected photos while keeping at least one |
+| PATCH | `/api/passengers/<pid>/balance` | Update an existing passenger's wallet balance |
+
+The UI uses these endpoints directly, so passenger data no longer needs to be entered manually in SQLite for normal operation.
 
 ## Authentication and Configuration
 
@@ -188,6 +212,10 @@ The codebase has been hardened around several failure modes:
 - Database connections are closed reliably.
 - Camera/model initialization is defensive.
 - Transaction logging is serialized across threads.
+- Passenger enrollment is authenticated and CSRF-protected.
+- Uploaded face images are validated, size-limited, normalized to JPEG and protected from Git commits.
+- Passenger photo writes and deletes are serialized to avoid concurrent filename/state races.
+- Enrollment regression tests cover image validation, JPEG normalization and filename indexing.
 - Unrecognized faces are blurred before streaming.
 - The legacy duplicate Flask implementation has been removed.
 
@@ -208,6 +236,14 @@ The current implementation does **not** claim to provide the planned SHA-256 emb
 5. Calibrate and validate recognition thresholds with representative test data.
 6. Strengthen privacy-preserving biometric-data handling.
 7. Add production deployment and monitoring configuration.
+
+## Tests
+
+Run the enrollment regression tests with:
+
+```bash
+python -m unittest discover -s tests -v
+```
 
 ## License
 
