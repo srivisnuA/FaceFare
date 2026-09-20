@@ -17,6 +17,7 @@ MAX_PHOTOS_PER_REQUEST = 5
 MAX_PHOTO_BYTES = 10 * 1024 * 1024
 MIN_IMAGE_WIDTH = 160
 MIN_IMAGE_HEIGHT = 160
+MAX_IMAGE_PIXELS = 25_000_000
 MAX_PASSENGER_ID_LENGTH = 50
 
 _PASSENGER_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 _-]{0,49}$")
@@ -85,6 +86,10 @@ def validate_image_file(file) -> str:
             if width < MIN_IMAGE_WIDTH or height < MIN_IMAGE_HEIGHT:
                 raise ValueError(
                     f"Each photo must be at least {MIN_IMAGE_WIDTH}x{MIN_IMAGE_HEIGHT} pixels"
+                )
+            if width * height > MAX_IMAGE_PIXELS:
+                raise ValueError(
+                    f"Each photo must be at most {MAX_IMAGE_PIXELS:,} pixels"
                 )
             image.verify()
     except ValueError:
