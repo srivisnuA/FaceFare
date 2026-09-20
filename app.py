@@ -6,6 +6,7 @@ import threading
 import time
 import traceback
 import os
+import shutil
 from datetime import datetime
 from urllib.parse import urlparse
 
@@ -13,10 +14,11 @@ from flask import Flask, render_template, jsonify, request, redirect, url_for, s
 from flask_socketio import SocketIO, emit
 
 from vision.camera import open_camera
-from vision.recognition import recognize_face
+from vision.recognition import recognize_face, load_known_faces
 from vision.face_detector import detect_faces
-from database.models import get_passengers, get_all_balances
+from database.models import get_passengers, get_all_balances, add_passenger
 from services.trip_manager import board, exit_bus
+from services.enrollment import normalize_passenger_id, passenger_directory, save_passenger_photos
 from services.wallet import deduct_balance
 from services.fare_engine import calculate_fare
 from services.logger import log_transaction
@@ -298,6 +300,55 @@ def index():
         base_fare     = BASE_FARE,
         per_stop_rate = PER_STOP_RATE,
     )
+
+
+@app.route("/api/passengers", methods=["POST"])
+@login_required
+def create_passenger():
+    """Create a passenger and save their enrolled face photos."""
+    pid_raw = request.form.get("name", "")
+    balance_raw = request.form.get("initial_balance", "100")
+    files = request.files.getlist("photos")
+
+    try:
+        pid = normalize_passenger_id(pid_raw)
+        initial_balance = float(balance_raw)
+        if not initial_balance >= 0:
+            raise ValueError("Initial balance must be non-negative")
+
+        saved_paths = save_passenger_photos(pid, files)
+
+        try:
+            add_passenger(pid, initial_balance)
+        except Exception:
+            for path in saved_paths:
+                try:
+                    os.remove(path)
+                except OSError:
+                    pass
+            directory = passenger_directory(pid)
+            if os.path.isdir(directory) and not os.listdir(directory):
+                try:
+                    os.rmdir(directory)
+                except OSError:
+                    pass
+            raise
+
+        passengers[pid] = {"balance": initial_balance}
+        load_known_faces()
+
+        return jsonify({
+            "ok": True,
+            "passenger": pid,
+            "balance": initial_balance,
+            "photos": [os.path.basename(path) for path in saved_paths],
+        }), 201
+
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    except Exception as exc:
+        print(f"[Enrollment] Could not create passenger: {exc}")
+        return jsonify({"ok": False, "error": "Could not create passenger."}), 409
 
 
 @app.route("/control", methods=["POST"])
