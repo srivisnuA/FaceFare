@@ -1,5 +1,6 @@
 import os
 import re
+import threading
 
 from PIL import Image, UnidentifiedImageError
 
@@ -19,6 +20,7 @@ MIN_IMAGE_HEIGHT = 160
 MAX_PASSENGER_ID_LENGTH = 50
 
 _PASSENGER_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 _-]{0,49}$")
+ENROLLMENT_LOCK = threading.Lock()
 
 
 def normalize_passenger_id(raw_pid: str) -> str:
@@ -135,27 +137,28 @@ def save_passenger_photos(pid: str, files) -> list[str]:
             f"A maximum of {MAX_PHOTOS_PER_REQUEST} photos can be uploaded at once"
         )
 
-    directory = ensure_passenger_directory(pid)
-    next_index = next_photo_index(pid)
-    saved_paths = []
+    with ENROLLMENT_LOCK:
+        directory = ensure_passenger_directory(pid)
+        next_index = next_photo_index(pid)
+        saved_paths = []
 
-    try:
-        for file in files:
-            extension = validate_image_file(file)
+        try:
+            for file in files:
+                extension = validate_image_file(file)
 
-            path = os.path.join(
-                directory,
-                f"{pid}{next_index}{extension}",
-            )
-            file.save(path)
-            saved_paths.append(path)
-            next_index += 1
-    except Exception:
-        for path in saved_paths:
-            try:
-                os.remove(path)
-            except OSError:
-                pass
-        raise
+                path = os.path.join(
+                    directory,
+                    f"{pid}{next_index}{extension}",
+                )
+                file.save(path)
+                saved_paths.append(path)
+                next_index += 1
+        except Exception:
+            for path in saved_paths:
+                try:
+                    os.remove(path)
+                except OSError:
+                    pass
+            raise
 
-    return saved_paths
+        return saved_paths
