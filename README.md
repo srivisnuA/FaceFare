@@ -230,7 +230,7 @@ The current implementation does **not** claim to provide the planned SHA-256 emb
 ## Roadmap
 
 1. Improve recognition performance and temporal stability.
-2. Add automated tests and CI.
+2. Expand automated tests and CI coverage.
 3. Persist complete trip and transaction records.
 4. Implement dual-camera entry/exit architecture.
 5. Calibrate and validate recognition thresholds with representative test data.
