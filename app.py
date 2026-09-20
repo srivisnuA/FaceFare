@@ -87,6 +87,14 @@ state = {
 passengers = get_passengers()
 
 
+def refresh_passenger_cache():
+    """Refresh the in-memory passenger cache from SQLite before management operations."""
+    current = get_passengers()
+    passengers.clear()
+    passengers.update(current)
+    return current
+
+
 # ─────────────────────────────────────────────
 # Helpers
 # ─────────────────────────────────────────────
@@ -444,6 +452,7 @@ def edit_passenger(pid):
     with ENROLLMENT_LOCK:
         try:
             old_pid = normalize_passenger_id(pid)
+            refresh_passenger_cache()
             if old_pid not in passengers:
                 return jsonify({"ok": False, "error": "Passenger not found."}), 404
 
@@ -509,6 +518,7 @@ def remove_passenger(pid):
     with ENROLLMENT_LOCK:
         try:
             pid = normalize_passenger_id(pid)
+            refresh_passenger_cache()
             if pid not in passengers:
                 return jsonify({"ok": False, "error": "Passenger not found."}), 404
 
@@ -557,6 +567,7 @@ def add_passenger_photos(pid):
     """Add face photos to an existing passenger and reload recognition."""
     try:
         pid = normalize_passenger_id(pid)
+        refresh_passenger_cache()
         if pid not in passengers:
             return jsonify({"ok": False, "error": "Passenger not found."}), 404
 
@@ -584,6 +595,7 @@ def update_passenger_balance(pid):
     """Update an existing passenger's wallet balance from the dashboard."""
     try:
         pid = normalize_passenger_id(pid)
+        refresh_passenger_cache()
         if pid not in passengers:
             return jsonify({"ok": False, "error": "Passenger not found."}), 404
 
@@ -619,6 +631,7 @@ def serve_passenger_photo(pid, filename):
     """Serve one enrolled face photo to the authenticated management UI."""
     try:
         pid = normalize_passenger_id(pid)
+        refresh_passenger_cache()
         if pid not in passengers:
             return jsonify({"ok": False, "error": "Passenger not found."}), 404
 
@@ -649,6 +662,7 @@ def list_passenger_photos(pid):
     """Return enrolled face-photo filenames for an existing passenger."""
     try:
         pid = normalize_passenger_id(pid)
+        refresh_passenger_cache()
         if pid not in passengers:
             return jsonify({"ok": False, "error": "Passenger not found."}), 404
 
@@ -683,6 +697,7 @@ def delete_passenger_photos(pid):
     with ENROLLMENT_LOCK:
         try:
             pid = normalize_passenger_id(pid)
+            refresh_passenger_cache()
             if pid not in passengers:
                 return jsonify({"ok": False, "error": "Passenger not found."}), 404
 
