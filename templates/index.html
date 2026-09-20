@@ -319,6 +319,12 @@ body::after{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
 .photo-preview-name{position:absolute;left:0;right:0;bottom:0;padding:4px 5px;background:linear-gradient(transparent,rgba(0,0,0,.8));
   color:#fff;font-family:var(--mono);font-size:.48rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .photo-preview-count{font-family:var(--mono);font-size:.58rem;color:var(--cyan);margin-top:5px}
+.photo-dropzone{border:1px dashed rgba(56,189,248,.28);border-radius:10px;padding:16px 12px;text-align:center;
+  background:rgba(56,189,248,.035);cursor:pointer;transition:all .18s ease}
+.photo-dropzone:hover,.photo-dropzone.dragover{border-color:var(--cyan);background:rgba(56,189,248,.08);box-shadow:0 0 18px rgba(56,189,248,.08)}
+.photo-drop-icon{font-size:1.35rem;line-height:1;margin-bottom:6px}
+.photo-drop-title{font-family:var(--mono);font-size:.63rem;font-weight:700;color:var(--text2);letter-spacing:.06em}
+.photo-drop-sub{font-size:.6rem;color:var(--muted);margin-top:4px}
 .enroll-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:4px}
 .enroll-status{min-height:18px;font-family:var(--mono);font-size:.62rem;color:var(--muted)}
 .enroll-status.ok{color:var(--green)} .enroll-status.err{color:var(--red)}
@@ -345,7 +351,12 @@ body::after{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
       </div>
       <div class="enroll-field">
         <label for="passenger-photos">Face photos</label>
-        <input id="passenger-photos" name="photos" type="file" accept=".jpg,.jpeg,.png,image/jpeg,image/png" multiple required>
+        <div class="photo-dropzone" id="passenger-photo-dropzone" role="button" tabindex="0" aria-controls="passenger-photos">
+          <div class="photo-drop-icon">📷</div>
+          <div class="photo-drop-title">DROP FACE PHOTOS HERE</div>
+          <div class="photo-drop-sub">or click to browse · JPG / JPEG / PNG · up to 5 photos</div>
+        </div>
+        <input id="passenger-photos" name="photos" type="file" accept=".jpg,.jpeg,.png,image/jpeg,image/png" multiple required style="display:none">
         <div id="passenger-photo-preview" class="photo-preview-grid" aria-live="polite"></div>
         <div id="passenger-photo-count" class="photo-preview-count"></div>
         <div class="enroll-help">Upload 1–5 clear face photos. Preview them here before enrollment.</div>
@@ -642,7 +653,48 @@ const CSRF_TOKEN = {{ csrf_token | tojson }};
         : `${files.length} photo${files.length === 1 ? '' : 's'} selected`;
     }
 
+    const photoDropzone = document.getElementById('passenger-photo-dropzone');
+
+    function setPhotoFiles(fileList) {
+      const files = [...fileList];
+      if (!files.length) {
+        photoInput.value = '';
+        clearPhotoPreview();
+        return;
+      }
+      if (files.length > 5) {
+        status.textContent = 'Select a maximum of 5 photos.';
+        status.className = 'enroll-status err';
+        photoInput.value = '';
+        clearPhotoPreview();
+        return;
+      }
+      const transfer = new DataTransfer();
+      files.forEach(file => transfer.items.add(file));
+      photoInput.files = transfer.files;
+      status.textContent = '';
+      status.className = 'enroll-status';
+      renderPhotoPreview(photoInput.files);
+    }
+
     photoInput.addEventListener('change', () => renderPhotoPreview(photoInput.files));
+
+    photoDropzone.addEventListener('click', () => photoInput.click());
+    photoDropzone.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        photoInput.click();
+      }
+    });
+    ['dragenter','dragover'].forEach(eventName => photoDropzone.addEventListener(eventName, e => {
+      e.preventDefault();
+      photoDropzone.classList.add('dragover');
+    }));
+    ['dragleave','drop'].forEach(eventName => photoDropzone.addEventListener(eventName, e => {
+      e.preventDefault();
+      photoDropzone.classList.remove('dragover');
+    }));
+    photoDropzone.addEventListener('drop', e => setPhotoFiles(e.dataTransfer.files));
 
     function closeModal() {
       modal.classList.remove('open');
