@@ -13,7 +13,7 @@ from hmac import compare_digest
 from datetime import datetime
 from urllib.parse import urlparse
 
-from flask import Flask, render_template, jsonify, request, redirect, url_for, session
+from flask import Flask, render_template, jsonify, request, redirect, url_for, session, send_from_directory
 from flask_socketio import SocketIO, emit
 
 from vision.camera import open_camera
@@ -437,6 +437,36 @@ def update_passenger_balance(pid):
     except Exception as exc:
         print(f"[Wallet] Could not update balance for {pid!r}: {exc}")
         return jsonify({"ok": False, "error": "Could not update passenger balance."}), 409
+
+
+@app.route("/api/passengers/<path:pid>/photos/<path:filename>", methods=["GET"])
+@login_required
+def serve_passenger_photo(pid, filename):
+    """Serve one enrolled face photo to the authenticated management UI."""
+    try:
+        pid = normalize_passenger_id(pid)
+        if pid not in passengers:
+            return jsonify({"ok": False, "error": "Passenger not found."}), 404
+
+        if not isinstance(filename, str) or os.path.basename(filename) != filename:
+            return jsonify({"ok": False, "error": "Invalid photo filename."}), 400
+
+        stem, extension = os.path.splitext(filename)
+        if extension.lower() not in {".jpg", ".jpeg", ".png"}:
+            return jsonify({"ok": False, "error": "Invalid photo filename."}), 400
+        if not re.fullmatch(rf"{re.escape(pid)}\d+", stem):
+            return jsonify({"ok": False, "error": "Invalid photo filename."}), 400
+
+        directory = passenger_directory(pid)
+        if not os.path.isdir(directory) or not os.path.isfile(os.path.join(directory, filename)):
+            return jsonify({"ok": False, "error": "Photo not found."}), 404
+
+        return send_from_directory(directory, filename, max_age=0)
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    except Exception as exc:
+        print(f"[Enrollment] Could not serve photo for {pid!r}: {exc}")
+        return jsonify({"ok": False, "error": "Could not serve passenger photo."}), 409
 
 
 @app.route("/api/passengers/<path:pid>/photos", methods=["GET"])
