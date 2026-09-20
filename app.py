@@ -6,7 +6,6 @@ import threading
 import time
 import traceback
 import os
-import shutil
 from datetime import datetime
 from urllib.parse import urlparse
 
