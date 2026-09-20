@@ -7,6 +7,9 @@ import time
 import traceback
 import os
 import re
+import secrets
+from functools import wraps
+from hmac import compare_digest
 from datetime import datetime
 from urllib.parse import urlparse
 
@@ -83,6 +86,26 @@ def _safe_next_url(target):
         return url_for("index")
 
     return target
+
+
+def _csrf_token():
+    """Return the per-session CSRF token, creating it when needed."""
+    token = session.get("_csrf_token")
+    if not token:
+        token = secrets.token_urlsafe(32)
+        session["_csrf_token"] = token
+    return token
+
+
+def csrf_protect(view_func):
+    """Require the session's CSRF token for authenticated state changes."""
+    @wraps(view_func)
+    def wrapped(*args, **kwargs):
+        token = request.headers.get("X-CSRF-Token", "")
+        if not token or not compare_digest(token, _csrf_token()):
+            return jsonify({"ok": False, "error": "Invalid CSRF token."}), 403
+        return view_func(*args, **kwargs)
+    return wrapped
 
 
 # ─────────────────────────────────────────────
@@ -299,11 +322,13 @@ def index():
         stops         = BUS_STOPS,
         base_fare     = BASE_FARE,
         per_stop_rate = PER_STOP_RATE,
+        csrf_token    = _csrf_token(),
     )
 
 
 @app.route("/api/passengers", methods=["POST"])
 @login_required
+@csrf_protect
 def create_passenger():
     """Create a passenger and save their enrolled face photos."""
     pid_raw = request.form.get("name", "")
@@ -353,6 +378,7 @@ def create_passenger():
 
 @app.route("/api/passengers/<path:pid>/photos", methods=["POST"])
 @login_required
+@csrf_protect
 def add_passenger_photos(pid):
     """Add face photos to an existing passenger and reload recognition."""
     try:
@@ -379,6 +405,7 @@ def add_passenger_photos(pid):
 
 @app.route("/api/passengers/<path:pid>/balance", methods=["PATCH"])
 @login_required
+@csrf_protect
 def update_passenger_balance(pid):
     """Update an existing passenger's wallet balance from the dashboard."""
     try:
@@ -446,6 +473,7 @@ def list_passenger_photos(pid):
 
 @app.route("/api/passengers/<path:pid>/photos", methods=["DELETE"])
 @login_required
+@csrf_protect
 def delete_passenger_photos(pid):
     """Delete selected face photos while keeping at least one enrolled image."""
     try:
@@ -511,6 +539,7 @@ def delete_passenger_photos(pid):
 
 @app.route("/control", methods=["POST"])
 @login_required
+@csrf_protect
 def control():
     data = request.get_json(silent=True) or {}
     action = data.get("action", "")
