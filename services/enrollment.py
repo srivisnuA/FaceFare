@@ -6,11 +6,12 @@ from PIL import Image, ImageOps, UnidentifiedImageError
 
 from security.privacy import UNKNOWN_IDENTITIES
 
-KNOWN_FACES_DIR = os.path.join(
-    os.path.dirname(os.path.dirname(__file__)),
-    "assets",
-    "known_faces",
+PROJECT_ROOT = os.path.dirname(os.path.dirname(__file__))
+DATA_DIR = os.environ.get(
+    "FACEFARE_DATA_DIR",
+    os.path.join(PROJECT_ROOT, "data"),
 )
+KNOWN_FACES_DIR = os.path.join(DATA_DIR, "known_faces")
 
 ALLOWED_IMAGE_EXTENSIONS = frozenset({".jpg", ".jpeg", ".png"})
 MAX_PHOTOS_PER_REQUEST = 5
