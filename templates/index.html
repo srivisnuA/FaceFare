@@ -312,6 +312,13 @@ body::after{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
 .enroll-field input{width:100%;background:var(--s2);border:1px solid var(--border2);border-radius:8px;padding:9px 10px;color:var(--text);font:500 .78rem var(--font);outline:none}
 .enroll-field input:focus{border-color:var(--cyan)}
 .enroll-help{font-size:.65rem;color:var(--muted);line-height:1.5}
+.photo-preview-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:7px;margin-top:7px}
+.photo-preview{position:relative;aspect-ratio:1;border-radius:8px;overflow:hidden;background:var(--s2);border:1px solid var(--border2)}
+.photo-preview img{width:100%;height:100%;display:block;object-fit:cover}
+.photo-preview::after{content:'';position:absolute;inset:0;box-shadow:inset 0 0 0 1px rgba(255,255,255,.04);pointer-events:none}
+.photo-preview-name{position:absolute;left:0;right:0;bottom:0;padding:4px 5px;background:linear-gradient(transparent,rgba(0,0,0,.8));
+  color:#fff;font-family:var(--mono);font-size:.48rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.photo-preview-count{font-family:var(--mono);font-size:.58rem;color:var(--cyan);margin-top:5px}
 .enroll-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:4px}
 .enroll-status{min-height:18px;font-family:var(--mono);font-size:.62rem;color:var(--muted)}
 .enroll-status.ok{color:var(--green)} .enroll-status.err{color:var(--red)}
@@ -339,7 +346,9 @@ body::after{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
       <div class="enroll-field">
         <label for="passenger-photos">Face photos</label>
         <input id="passenger-photos" name="photos" type="file" accept=".jpg,.jpeg,.png,image/jpeg,image/png" multiple required>
-        <div class="enroll-help">Upload 1–5 clear face photos. They will be stored automatically as <b>name1.jpg</b>, <b>name2.jpg</b>, etc. inside that passenger's folder.</div>
+        <div id="passenger-photo-preview" class="photo-preview-grid" aria-live="polite"></div>
+        <div id="passenger-photo-count" class="photo-preview-count"></div>
+        <div class="enroll-help">Upload 1–5 clear face photos. Preview them here before enrollment.</div>
       </div>
       <div class="enroll-status" id="enroll-status"></div>
       <div class="enroll-actions">
@@ -594,11 +603,52 @@ const CSRF_TOKEN = {{ csrf_token | tojson }};
     const closeBtn = document.getElementById('enroll-close');
     const cancelBtn = document.getElementById('enroll-cancel');
     const submitBtn = document.getElementById('enroll-submit');
+    const photoInput = document.getElementById('passenger-photos');
+    const photoPreview = document.getElementById('passenger-photo-preview');
+    const photoCount = document.getElementById('passenger-photo-count');
+    let previewUrls = [];
+
+    function clearPhotoPreview() {
+      previewUrls.forEach(url => URL.revokeObjectURL(url));
+      previewUrls = [];
+      photoPreview.innerHTML = '';
+      photoCount.textContent = '';
+    }
+
+    function renderPhotoPreview(files) {
+      clearPhotoPreview();
+      if (!files.length) return;
+
+      [...files].slice(0, 5).forEach(file => {
+        const url = URL.createObjectURL(file);
+        previewUrls.push(url);
+        const item = document.createElement('div');
+        item.className = 'photo-preview';
+
+        const img = document.createElement('img');
+        img.src = url;
+        img.alt = file.name;
+
+        const label = document.createElement('div');
+        label.className = 'photo-preview-name';
+        label.textContent = file.name;
+
+        item.append(img, label);
+        photoPreview.appendChild(item);
+      });
+
+      photoCount.textContent = files.length > 5
+        ? `${files.length} selected · only the first 5 are shown`
+        : `${files.length} photo${files.length === 1 ? '' : 's'} selected`;
+    }
+
+    photoInput.addEventListener('change', () => renderPhotoPreview(photoInput.files));
 
     function closeModal() {
       modal.classList.remove('open');
       modal.setAttribute('aria-hidden', 'true');
       form.reset();
+      clearPhotoPreview();
       document.getElementById('initial-balance').value = '100';
       status.textContent = '';
       status.className = 'enroll-status';
