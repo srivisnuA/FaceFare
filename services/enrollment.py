@@ -78,3 +78,43 @@ def ensure_passenger_directory(pid: str) -> str:
     directory = passenger_directory(pid)
     os.makedirs(directory, exist_ok=True)
     return directory
+
+
+def save_passenger_photos(pid: str, files) -> list[str]:
+    """Save uploaded image files as <pid>1.jpg, <pid>2.jpg, etc."""
+    pid = normalize_passenger_id(pid)
+
+    if not files:
+        raise ValueError("At least one photo is required")
+
+    files = list(files)
+    if len(files) > MAX_PHOTOS_PER_REQUEST:
+        raise ValueError(
+            f"A maximum of {MAX_PHOTOS_PER_REQUEST} photos can be uploaded at once"
+        )
+
+    directory = ensure_passenger_directory(pid)
+    next_index = next_photo_index(pid)
+    saved_paths = []
+
+    try:
+        for file in files:
+            filename = getattr(file, "filename", "")
+            extension = validate_image_extension(filename)
+
+            path = os.path.join(
+                directory,
+                f"{pid}{next_index}{extension}",
+            )
+            file.save(path)
+            saved_paths.append(path)
+            next_index += 1
+    except Exception:
+        for path in saved_paths:
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+        raise
+
+    return saved_paths
