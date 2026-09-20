@@ -411,6 +411,38 @@ def update_passenger_balance(pid):
         return jsonify({"ok": False, "error": "Could not update passenger balance."}), 409
 
 
+@app.route("/api/passengers/<path:pid>/photos", methods=["GET"])
+@login_required
+def list_passenger_photos(pid):
+    """Return enrolled face-photo filenames for an existing passenger."""
+    try:
+        pid = normalize_passenger_id(pid)
+        if pid not in passengers:
+            return jsonify({"ok": False, "error": "Passenger not found."}), 404
+
+        directory = passenger_directory(pid)
+        if not os.path.isdir(directory):
+            return jsonify({"ok": True, "passenger": pid, "photos": []})
+
+        photos = sorted(
+            filename
+            for filename in os.listdir(directory)
+            if os.path.isfile(os.path.join(directory, filename))
+            and os.path.splitext(filename)[1].lower() in {".jpg", ".jpeg", ".png"}
+        )
+
+        return jsonify({
+            "ok": True,
+            "passenger": pid,
+            "photos": photos,
+        })
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    except Exception as exc:
+        print(f"[Enrollment] Could not list photos for {pid!r}: {exc}")
+        return jsonify({"ok": False, "error": "Could not list passenger photos."}), 409
+
+
 @app.route("/api/passengers/<path:pid>/photos", methods=["DELETE"])
 @login_required
 def delete_passenger_photos(pid):
