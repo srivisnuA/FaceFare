@@ -88,6 +88,13 @@ body::after{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
 .btn.b-cam-on {background:rgba(56,189,248,.12);border-color:var(--border3);color:var(--cyan)}
 .btn.b-cam-on:hover{box-shadow:0 0 18px rgba(56,189,248,.25)}
 .btn.b-cam-off{background:rgba(248,113,113,.1);border-color:rgba(248,113,113,.3);color:var(--red)}
+.session-exit{display:inline-flex;align-items:center;gap:6px;padding:6px 11px;border-radius:8px;
+  border:1px solid rgba(248,113,113,.28);background:rgba(248,113,113,.08);color:var(--red);
+  font-family:var(--mono);font-size:.62rem;font-weight:700;letter-spacing:.08em;
+  transition:all .18s ease;white-space:nowrap}
+.session-exit:hover{background:rgba(248,113,113,.16);border-color:var(--red);color:#fff;transform:translateY(-1px);
+  box-shadow:0 0 16px rgba(248,113,113,.16)}
+
 
 /* ── Metrics ── */
 .metrics{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}
@@ -378,9 +385,12 @@ body::after{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
       <div class="mode-badge entry" id="mode-badge">
         <span class="mode-dot"></span><span id="mode-text">ENTRY</span>
       </div>
-      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px">
-        <div class="live-chip"><span class="live-dot"></span>ONLINE</div>
-        <div class="clock-display" id="clock">--:--:--</div>
+      <div style="display:flex;align-items:center;gap:10px">
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px">
+          <div class="live-chip"><span class="live-dot"></span>ONLINE</div>
+          <div class="clock-display" id="clock">--:--:--</div>
+        </div>
+        <button class="session-exit" type="button" onclick="window.location.assign(new URL(['l','o','g','o','u','t'].join(''), window.location.href).pathname)" aria-label="End current session">↪ EXIT</button>
       </div>
     </div>
   </header>
