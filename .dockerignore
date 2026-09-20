@@ -1,0 +1,12 @@
+.git
+.gitignore
+.github
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.env
+logs/
+data/
+assets/known_faces/
+tests/
