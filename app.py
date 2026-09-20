@@ -668,9 +668,11 @@ def on_disconnect():
 
 
 @socketio.on("browser_frame")
-def on_browser_frame(data):
+def on_browser_frame(data, ack=None):
     """Process a frame captured by the authenticated browser camera."""
     if not is_authenticated():
+        if callable(ack):
+            ack({"ok": False, "error": "Authentication required."})
         return
 
     try:
@@ -678,11 +680,17 @@ def on_browser_frame(data):
         b64_frame, recognized = _process_frame(frame)
         emit("frame", {"img": b64_frame})
         emit("update", build_snapshot(recognized))
+        if callable(ack):
+            ack({"ok": True})
     except ValueError as exc:
         emit("camera_error", {"msg": str(exc)})
+        if callable(ack):
+            ack({"ok": False, "error": str(exc)})
     except Exception as exc:
         print(f"[Camera] Browser frame error: {exc}")
         emit("camera_error", {"msg": "Could not process browser camera frame."})
+        if callable(ack):
+            ack({"ok": False, "error": "Could not process browser camera frame."})
 
 
 @socketio.on("start_camera")
