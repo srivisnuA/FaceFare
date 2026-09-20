@@ -648,6 +648,7 @@ if __name__ == "__main__":
         app,
         host         = "0.0.0.0",
         port         = int(os.environ.get("PORT", 5000)),
-        debug        = False,
-        use_reloader = False,
+        debug                    = False,
+        use_reloader              = False,
+        allow_unsafe_werkzeug     = os.environ.get("FACEFARE_ENV", "development").lower() == "production",
     )
