@@ -11,7 +11,8 @@ DATA_DIR = os.environ.get(
 )
 KNOWN_FACES_DIR = os.path.join(DATA_DIR, "known_faces")
 
-MATCH_THRESHOLD = 10.0
+MATCH_THRESHOLD = float(os.environ.get("FACEFARE_MATCH_THRESHOLD", "10.0"))
+MATCH_MARGIN = float(os.environ.get("FACEFARE_MATCH_MARGIN", "0.75"))
 
 known_embeddings = []
 known_names = []
@@ -86,22 +87,42 @@ def recognize_face(frame):
                 return "Unknown passenger"
             enrolled = list(zip(known_names, known_embeddings))
 
-        best_match = None
-        best_distance = float("inf")
-
+        # Compare every enrolled photo, but collapse scores by passenger.
+        # This prevents one noisy photo from creating a separate identity and
+        # lets us reject cases where two passengers are too close to call.
+        person_best = {}
         for name, known in enrolled:
             if known.shape != embedding.shape:
                 continue
 
             distance = float(np.linalg.norm(embedding - known))
-            if distance < best_distance:
-                best_distance = distance
-                best_match = name
+            current = person_best.get(name)
+            if current is None or distance < current:
+                person_best[name] = distance
 
-        if best_match is not None and best_distance < MATCH_THRESHOLD:
-            return best_match
+        if not person_best:
+            return "Unknown passenger"
 
-        return "Unknown passenger"
+        ranked = sorted(person_best.items(), key=lambda item: item[1])
+        best_match, best_distance = ranked[0]
+
+        # A match is accepted only when it is clearly separated from the
+        # runner-up. Close calls are deliberately treated as unknown rather
+        # than risking a wrong passenger/fare assignment.
+        if best_distance >= MATCH_THRESHOLD:
+            return "Unknown passenger"
+
+        if len(ranked) > 1:
+            second_distance = ranked[1][1]
+            if (second_distance - best_distance) < MATCH_MARGIN:
+                print(
+                    f"[Recognition] Ambiguous match: {best_match} "
+                    f"{best_distance:.3f} vs runner-up {ranked[1][0]} "
+                    f"{second_distance:.3f}"
+                )
+                return "Unknown passenger"
+
+        return best_match
 
     except Exception as exc:
         print(f"[Recognition] Recognition error: {exc}")
