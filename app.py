@@ -411,6 +411,71 @@ def update_passenger_balance(pid):
         return jsonify({"ok": False, "error": "Could not update passenger balance."}), 409
 
 
+@app.route("/api/passengers/<path:pid>/photos", methods=["DELETE"])
+@login_required
+def delete_passenger_photos(pid):
+    """Delete selected face photos while keeping at least one enrolled image."""
+    try:
+        pid = normalize_passenger_id(pid)
+        if pid not in passengers:
+            return jsonify({"ok": False, "error": "Passenger not found."}), 404
+
+        data = request.get_json(silent=True) or {}
+        filenames = data.get("photos")
+        if not isinstance(filenames, list) or not filenames:
+            return jsonify({"ok": False, "error": "Select at least one photo."}), 400
+
+        directory = passenger_directory(pid)
+        if not os.path.isdir(directory):
+            return jsonify({"ok": False, "error": "No enrolled photos found."}), 404
+
+        current_files = [
+            filename for filename in os.listdir(directory)
+            if os.path.isfile(os.path.join(directory, filename))
+            and os.path.splitext(filename)[1].lower() in {".jpg", ".jpeg", ".png"}
+        ]
+
+        targets = []
+        for filename in filenames:
+            if not isinstance(filename, str) or os.path.basename(filename) != filename:
+                return jsonify({"ok": False, "error": "Invalid photo filename."}), 400
+
+            stem, extension = os.path.splitext(filename)
+            if extension.lower() not in {".jpg", ".jpeg", ".png"}:
+                return jsonify({"ok": False, "error": "Invalid photo filename."}), 400
+            if not re.fullmatch(rf"{re.escape(pid)}\d+", stem):
+                return jsonify({"ok": False, "error": "Invalid photo filename."}), 400
+            if filename not in current_files:
+                return jsonify({"ok": False, "error": f"Photo not found: {filename}"}), 404
+
+            targets.append(filename)
+
+        targets = list(dict.fromkeys(targets))
+        if len(current_files) - len(targets) < 1:
+            return jsonify({
+                "ok": False,
+                "error": "At least one face photo must remain enrolled.",
+            }), 400
+
+        deleted = []
+        for filename in targets:
+            os.remove(os.path.join(directory, filename))
+            deleted.append(filename)
+
+        load_known_faces()
+
+        return jsonify({
+            "ok": True,
+            "passenger": pid,
+            "deleted": deleted,
+        })
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    except Exception as exc:
+        print(f"[Enrollment] Could not delete photos for {pid!r}: {exc}")
+        return jsonify({"ok": False, "error": "Could not delete passenger photos."}), 409
+
+
 @app.route("/control", methods=["POST"])
 @login_required
 def control():
