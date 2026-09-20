@@ -4,11 +4,12 @@ import os
 import re
 import threading
 
-KNOWN_FACES_DIR = os.path.join(
-    os.path.dirname(os.path.dirname(__file__)),
-    "assets",
-    "known_faces",
+PROJECT_ROOT = os.path.dirname(os.path.dirname(__file__))
+DATA_DIR = os.environ.get(
+    "FACEFARE_DATA_DIR",
+    os.path.join(PROJECT_ROOT, "data"),
 )
+KNOWN_FACES_DIR = os.path.join(DATA_DIR, "known_faces")
 
 MATCH_THRESHOLD = 10.0
 
