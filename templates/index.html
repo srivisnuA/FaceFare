@@ -773,8 +773,11 @@ const CSRF_TOKEN = {{ csrf_token | tojson }};
     };
   })();
 
-  async function editPassengerBalance(pid, currentBalance) {
-    const raw = window.prompt('Enter new wallet balance for ' + pid + ':', String(currentBalance));
+  async function editPassenger(pid, currentBalance) {
+    const name = window.prompt('Passenger name:', pid);
+    if (name === null) return;
+
+    const raw = window.prompt('Wallet balance:', String(currentBalance));
     if (raw === null) return;
 
     const value = Number(raw);
@@ -784,14 +787,32 @@ const CSRF_TOKEN = {{ csrf_token | tojson }};
     }
 
     try {
-      const response = await fetch('/api/passengers/' + encodeURIComponent(pid) + '/balance', {
+      const response = await fetch('/api/passengers/' + encodeURIComponent(pid), {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF_TOKEN },
-        body: JSON.stringify({ balance: value })
+        body: JSON.stringify({ name: name, balance: value })
       });
       const data = await response.json();
-      if (!response.ok || !data.ok) throw new Error(data.error || 'Could not update balance.');
-      showToast('✓ ' + pid + ' balance updated to ₹' + data.balance, 'board');
+      if (!response.ok || !data.ok) throw new Error(data.error || 'Could not edit passenger.');
+      showToast('✓ ' + data.passenger + ' updated', 'board');
+    } catch (err) {
+      showToast(err.message, 'declined');
+    }
+  }
+
+  async function deletePassenger(pid) {
+    if (!window.confirm('Delete passenger "' + pid + '" and all enrolled face photos? This cannot be undone.')) {
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/passengers/' + encodeURIComponent(pid), {
+        method: 'DELETE',
+        headers: { 'X-CSRF-Token': CSRF_TOKEN }
+      });
+      const data = await response.json();
+      if (!response.ok || !data.ok) throw new Error(data.error || 'Could not delete passenger.');
+      showToast('✓ ' + pid + ' deleted', 'board');
     } catch (err) {
       showToast(err.message, 'declined');
     }
@@ -1133,12 +1154,19 @@ const CSRF_TOKEN = {{ csrf_token | tojson }};
   })();
 
   // ══ SOCKET.IO ═══════════════════════════════════════════════
-  const socket = io({ transports: ['websocket','polling'], reconnection: true, reconnectionDelay: 1000 });
+  const socket = io({
+    transports: ['polling', 'websocket'],
+    reconnection: true,
+    reconnectionDelay: 1000,
+    reconnectionDelayMax: 5000,
+    reconnectionAttempts: Infinity
+  });
 
   socket.on('connect', () => {
     socketConnected = true;
-    console.log('[Socket] Connected:', socket.id);
+    console.log('[Socket] Connected:', socket.id, 'transport=', socket.io.engine.transport.name);
     setConnUI(true);
+    showToast('✓ Live server connected', 'board');
   });
   socket.on('disconnect', reason => {
     socketConnected = false;
@@ -1151,6 +1179,7 @@ const CSRF_TOKEN = {{ csrf_token | tojson }};
     socketConnected = false;
     console.error('[Socket] Error:', err.message);
     setConnUI(false);
+    showToast('⚠️ Live connection failed — retrying…', 'declined');
   });
   socket.on('camera_error', ({ msg }) => {
     console.error('[Camera] Error:', msg);
@@ -1293,7 +1322,7 @@ const CSRF_TOKEN = {{ csrf_token | tojson }};
       const trips     = tripCounts[pid] || 0;
       const spent     = passengerRev[pid] || 0;
       return `<div class="${cardCls}">
-        <div class="w-row1"><div class="w-pid">${pid}</div><div style="display:flex;align-items:center;gap:6px"><button class="enroll-btn" type="button" onclick="editPassengerBalance(${JSON.stringify(pid)}, ${bal})">₹ EDIT</button><button class="enroll-btn" type="button" onclick="openPhotoModal(${JSON.stringify(pid)})">＋ PHOTOS</button><div class="w-chip ${chipCls}">${chipTxt}</div></div></div>
+        <div class="w-row1"><div class="w-pid">${pid}</div><div style="display:flex;align-items:center;gap:6px"><button class="enroll-btn" type="button" onclick="editPassenger(${JSON.stringify(pid)}, ${bal})">EDIT</button><button class="enroll-btn" type="button" onclick="openPhotoModal(${JSON.stringify(pid)})">＋ PHOTOS</button><button class="enroll-btn" type="button" style="border-color:rgba(248,113,113,.35);color:var(--red);background:rgba(248,113,113,.07)" onclick="deletePassenger(${JSON.stringify(pid)})">DELETE</button><div class="w-chip ${chipCls}">${chipTxt}</div></div></div>
         <div class="w-row2">
           <div class="${balCls}${flash}">₹${bal}</div>
           <div class="w-meta"><div class="w-trips">${trips} trip${trips!==1?'s':''}</div><div class="w-spent">₹${spent} spent</div></div>
