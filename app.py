@@ -34,7 +34,13 @@ from config import SECRET_KEY, BUS_STOPS, BASE_FARE, PER_STOP_RATE
 # ─────────────────────────────────────────────
 
 app = Flask(__name__)
-app.config["SECRET_KEY"] = SECRET_KEY
+app.config.update(
+    SECRET_KEY=SECRET_KEY,
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE="Lax",
+    SESSION_COOKIE_SECURE=os.environ.get("FACEFARE_ENV", "development").lower() == "production",
+    MAX_CONTENT_LENGTH=55 * 1024 * 1024,
+)
 
 SOCKETIO_CORS_ORIGINS = os.environ.get("FACEFARE_CORS_ORIGINS", "").strip()
 if SOCKETIO_CORS_ORIGINS:
