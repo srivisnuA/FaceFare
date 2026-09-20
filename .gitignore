@@ -8,3 +8,4 @@ __pycache__/
 .env
 logs/
 assets/known_faces/
+data/
