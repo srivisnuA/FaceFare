@@ -22,7 +22,11 @@ def _valid_balance(value) -> bool:
 
 def _valid_delta(value) -> bool:
     """Return True only for numeric wallet adjustments."""
-    return isinstance(value, (int, float)) and not isinstance(value, bool)
+    return (
+        isinstance(value, (int, float))
+        and not isinstance(value, bool)
+        and math.isfinite(value)
+    )
 
 
 def get_passengers() -> dict:
