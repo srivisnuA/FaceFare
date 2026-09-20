@@ -2,6 +2,7 @@ from deepface import DeepFace
 import numpy as np
 import os
 import re
+import threading
 
 KNOWN_FACES_DIR = os.path.join(
     os.path.dirname(os.path.dirname(__file__)),
@@ -13,6 +14,7 @@ MATCH_THRESHOLD = 10.0
 
 known_embeddings = []
 known_names = []
+recognition_lock = threading.RLock()
 
 
 def _face_files():
@@ -42,10 +44,12 @@ def _face_files():
 
 def load_known_faces():
     """Load embeddings from flat or per-passenger face directories."""
-    known_embeddings.clear()
-    known_names.clear()
+    with recognition_lock:
+        known_embeddings.clear()
+        known_names.clear()
 
-    for path, name in _face_files():
+        files = list(_face_files())
+        for path, name in files:
         try:
             embedding = DeepFace.represent(
                 img_path=path,
@@ -56,8 +60,8 @@ def load_known_faces():
             known_embeddings.append(
                 np.asarray(embedding, dtype=np.float32)
             )
-            known_names.append(name)
-        except Exception as exc:
+                known_names.append(name)
+            except Exception as exc:
             print(f"[Recognition] Could not load {path}: {exc}")
 
 
@@ -78,13 +82,15 @@ def recognize_face(frame):
 
         embedding = np.asarray(embedding, dtype=np.float32)
 
-        if not known_embeddings:
-            return "Unknown passenger"
+        with recognition_lock:
+            if not known_embeddings:
+                return "Unknown passenger"
+            enrolled = list(zip(known_names, known_embeddings))
 
         best_match = None
         best_distance = float("inf")
 
-        for name, known in zip(known_names, known_embeddings):
+        for name, known in enrolled:
             if known.shape != embedding.shape:
                 continue
 
