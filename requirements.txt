@@ -22,7 +22,6 @@ mtcnn==1.0.0
 retina-face==0.0.17
 tensorflow==2.15.0
 tensorflow-estimator==2.15.0
-tensorflow-intel==2.15.0
 keras==2.15.0
 h5py==3.16.0
 
