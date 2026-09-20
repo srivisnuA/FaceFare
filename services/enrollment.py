@@ -1,6 +1,8 @@
 import os
 import re
 
+from PIL import Image, UnidentifiedImageError
+
 from security.privacy import UNKNOWN_IDENTITIES
 
 KNOWN_FACES_DIR = os.path.join(
@@ -11,6 +13,7 @@ KNOWN_FACES_DIR = os.path.join(
 
 ALLOWED_IMAGE_EXTENSIONS = frozenset({".jpg", ".jpeg", ".png"})
 MAX_PHOTOS_PER_REQUEST = 5
+MAX_PHOTO_BYTES = 10 * 1024 * 1024
 MAX_PASSENGER_ID_LENGTH = 50
 
 _PASSENGER_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 _-]{0,49}$")
@@ -50,6 +53,36 @@ def validate_image_extension(filename: str) -> str:
     extension = os.path.splitext(filename)[1].lower()
     if extension not in ALLOWED_IMAGE_EXTENSIONS:
         raise ValueError("Only JPG, JPEG, and PNG images are allowed")
+    return extension
+
+
+def validate_image_file(file) -> str:
+    """Validate an uploaded image's size and actual image contents."""
+    filename = getattr(file, "filename", "")
+    extension = validate_image_extension(filename)
+
+    stream = getattr(file, "stream", None)
+    if stream is None:
+        raise ValueError("Invalid image upload")
+
+    position = stream.tell()
+    stream.seek(0, os.SEEK_END)
+    size = stream.tell()
+    stream.seek(0)
+
+    if size <= 0:
+        raise ValueError("Uploaded image is empty")
+    if size > MAX_PHOTO_BYTES:
+        raise ValueError("Each photo must be 10 MB or smaller")
+
+    try:
+        with Image.open(stream) as image:
+            image.verify()
+    except (UnidentifiedImageError, OSError):
+        raise ValueError("Uploaded file is not a valid image") from None
+    finally:
+        stream.seek(position)
+
     return extension
 
 
@@ -99,8 +132,7 @@ def save_passenger_photos(pid: str, files) -> list[str]:
 
     try:
         for file in files:
-            filename = getattr(file, "filename", "")
-            extension = validate_image_extension(filename)
+            extension = validate_image_file(file)
 
             path = os.path.join(
                 directory,
