@@ -1071,73 +1071,82 @@ const CSRF_TOKEN = {{ csrf_token | tojson }};
   }
 
   // ══ CHART.JS ════════════════════════════════════════════════
-  Chart.defaults.color       = '#3d6080';
-  Chart.defaults.font.family = "'JetBrains Mono',monospace";
-  Chart.defaults.font.size   = 10;
+  // ══ CHART.JS (optional — dashboard controls must work without the CDN) ══
+  let cRevLine = null, cFareLine = null, cBoardStop = null;
+  let cBar = null, cDonut = null, cPie = null;
 
-  const gridStyle  = { color: 'rgba(56,189,248,.06)' };
-  const tickStyle  = { color: '#3d6080', maxRotation: 0 };
-  const COLORS     = ['rgba(56,189,248,.75)','rgba(52,211,153,.75)','rgba(251,191,36,.75)',
-                      'rgba(167,139,250,.75)','rgba(248,113,113,.75)','rgba(244,114,182,.75)'];
+  if (typeof Chart !== 'undefined') {
+    Chart.defaults.color       = '#3d6080';
+    Chart.defaults.font.family = "'JetBrains Mono',monospace";
+    Chart.defaults.font.size   = 10;
 
-  function safeChart(id, config) {
-    const el = document.getElementById(id);
-    if (!el) { console.warn('[Chart] canvas not found:', id); return null; }
-    try { return new Chart(el, config); }
-    catch(e) { console.error('[Chart] init error for', id, e); return null; }
-  }
+    const gridStyle  = { color: 'rgba(56,189,248,.06)' };
+    const tickStyle  = { color: '#3d6080', maxRotation: 0 };
+    const COLORS     = ['rgba(56,189,248,.75)','rgba(52,211,153,.75)','rgba(251,191,36,.75)',
+                        'rgba(167,139,250,.75)','rgba(248,113,113,.75)','rgba(244,114,182,.75)'];
 
-  function mkLine(id, borderColor, bgColor) {
-    return safeChart(id, {
-      type: 'line',
-      data: { labels: [], datasets: [{ data: [], borderColor, backgroundColor: bgColor,
-        borderWidth: 2, pointRadius: 3, pointBackgroundColor: borderColor, fill: true, tension: .4 }] },
+    function safeChart(id, config) {
+      const el = document.getElementById(id);
+      if (!el) return null;
+      try { return new Chart(el, config); }
+      catch(e) { console.error('[Chart] init error for', id, e); return null; }
+    }
+
+    function mkLine(id, borderColor, bgColor) {
+      return safeChart(id, {
+        type: 'line',
+        data: { labels: [], datasets: [{ data: [], borderColor, backgroundColor: bgColor,
+          borderWidth: 2, pointRadius: 3, pointBackgroundColor: borderColor, fill: true, tension: .4 }] },
+        options: { responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: { x: { grid: gridStyle, ticks: tickStyle },
+                    y: { grid: gridStyle, ticks: { ...tickStyle, callback: v => '₹'+v } } } }
+      });
+    }
+
+    cRevLine = mkLine('cRevLine', '#fbbf24', 'rgba(251,191,36,.08)');
+    cFareLine = mkLine('cFareLine', '#38bdf8', 'rgba(56,189,248,.07)');
+
+    cBoardStop = safeChart('cBoardStop', {
+      type: 'bar',
+      data: { labels: STOPS, datasets: [{ data: STOPS.map(()=>0),
+        backgroundColor: STOPS.map((_,i)=>`hsla(${200+i*25},80%,60%,.7)`), borderRadius: 5 }] },
       options: { responsive: true, maintainAspectRatio: false,
         plugins: { legend: { display: false } },
-        scales: { x: { grid: gridStyle, ticks: tickStyle },
+        scales: { x: { grid: { display: false }, ticks: tickStyle },
+                  y: { grid: gridStyle, ticks: { ...tickStyle, stepSize: 1 } } } }
+    });
+
+    cBar = safeChart('cBar', {
+      type: 'bar',
+      data: { labels: [], datasets: [{ data: [], backgroundColor: [], borderRadius: 6 }] },
+      options: { responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: { x: { grid: { display: false }, ticks: tickStyle },
                   y: { grid: gridStyle, ticks: { ...tickStyle, callback: v => '₹'+v } } } }
     });
+
+    cDonut = safeChart('cDonut', {
+      type: 'doughnut',
+      data: { labels: ['Boards','Exits'],
+        datasets: [{ data: [0,0],
+          backgroundColor: ['rgba(56,189,248,.7)','rgba(251,191,36,.7)'],
+          borderColor: ['rgba(56,189,248,.3)','rgba(251,191,36,.3)'],
+          borderWidth: 1, hoverOffset: 4 }] },
+      options: { responsive: true, maintainAspectRatio: false, cutout: '65%',
+        plugins: { legend: { display: false } } }
+    });
+
+    cPie = safeChart('cPie', {
+      type: 'doughnut',
+      data: { labels: [], datasets: [{ data: [], backgroundColor: [], borderColor: [], borderWidth: 1 }] },
+      options: { responsive: true, maintainAspectRatio: false, cutout: '55%',
+        plugins: { legend: { display: false } }
+      }
+    });
+  } else {
+    console.warn('[Chart] Chart.js unavailable — continuing without analytics charts');
   }
-
-  const cRevLine   = mkLine('cRevLine',  '#fbbf24', 'rgba(251,191,36,.08)');
-  const cFareLine  = mkLine('cFareLine', '#38bdf8', 'rgba(56,189,248,.07)');
-
-  const cBoardStop = safeChart('cBoardStop', {
-    type: 'bar',
-    data: { labels: STOPS, datasets: [{ data: STOPS.map(()=>0),
-      backgroundColor: STOPS.map((_,i)=>`hsla(${200+i*25},80%,60%,.7)`), borderRadius: 5 }] },
-    options: { responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { display: false } },
-      scales: { x: { grid: { display: false }, ticks: tickStyle },
-                y: { grid: gridStyle, ticks: { ...tickStyle, stepSize: 1 } } } }
-  });
-
-  const cBar = safeChart('cBar', {
-    type: 'bar',
-    data: { labels: [], datasets: [{ data: [], backgroundColor: [], borderRadius: 6 }] },
-    options: { responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { display: false } },
-      scales: { x: { grid: { display: false }, ticks: tickStyle },
-                y: { grid: gridStyle, ticks: { ...tickStyle, callback: v => '₹'+v } } } }
-  });
-
-  const cDonut = safeChart('cDonut', {
-    type: 'doughnut',
-    data: { labels: ['Boards','Exits'],
-      datasets: [{ data: [0,0],
-        backgroundColor: ['rgba(56,189,248,.7)','rgba(251,191,36,.7)'],
-        borderColor:     ['rgba(56,189,248,.3)','rgba(251,191,36,.3)'],
-        borderWidth: 1, hoverOffset: 4 }] },
-    options: { responsive: true, maintainAspectRatio: false, cutout: '65%',
-      plugins: { legend: { display: false } } }
-  });
-
-  const cPie = safeChart('cPie', {
-    type: 'doughnut',
-    data: { labels: [], datasets: [{ data: [], backgroundColor: [], borderColor: [], borderWidth: 1 }] },
-    options: { responsive: true, maintainAspectRatio: false, cutout: '55%',
-      plugins: { legend: { display: false } } }
-  });
 
   // ══ BUILD STATIC HTML ELEMENTS ══════════════════════════════
   document.getElementById('stops-flex').innerHTML =
