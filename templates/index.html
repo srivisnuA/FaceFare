@@ -333,6 +333,31 @@ body::after{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
   </div>
 </div>
 
+<div class="enroll-modal" id="photo-modal" aria-hidden="true">
+  <div class="enroll-card">
+    <div class="enroll-head">
+      <div class="enroll-title">Add Face Photos</div>
+      <button class="enroll-close" id="photo-close" type="button" aria-label="Close">×</button>
+    </div>
+    <form class="enroll-body" id="photo-form">
+      <div class="enroll-field">
+        <label>Passenger</label>
+        <input id="photo-passenger" type="text" readonly>
+      </div>
+      <div class="enroll-field">
+        <label for="extra-photos">Face photos</label>
+        <input id="extra-photos" name="photos" type="file" accept=".jpg,.jpeg,.png,image/jpeg,image/png" multiple required>
+        <div class="enroll-help">Upload 1–5 additional clear face photos. Recognition updates automatically.</div>
+      </div>
+      <div class="enroll-status" id="photo-status"></div>
+      <div class="enroll-actions">
+        <button class="ctrl-btn blue" id="photo-cancel" type="button">CANCEL</button>
+        <button class="ctrl-btn green" id="photo-submit" type="submit">ADD PHOTOS</button>
+      </div>
+    </form>
+  </div>
+</div>
+
 <div class="app">
 
   <!-- ══ TOPBAR ══ -->
@@ -608,6 +633,74 @@ const MAX_BAL   = 200;
       }
     };
   })();
+
+  // ══ EXISTING PASSENGER PHOTO UI ═══════════════════════════════
+  const photoModal = document.getElementById('photo-modal');
+  const photoForm = document.getElementById('photo-form');
+  const photoStatus = document.getElementById('photo-status');
+  const photoPassenger = document.getElementById('photo-passenger');
+  const photoSubmit = document.getElementById('photo-submit');
+
+  function closePhotoModal() {
+    photoModal.classList.remove('open');
+    photoModal.setAttribute('aria-hidden', 'true');
+    photoForm.reset();
+    photoPassenger.value = '';
+    photoStatus.textContent = '';
+    photoStatus.className = 'enroll-status';
+    photoSubmit.disabled = false;
+    photoSubmit.textContent = 'ADD PHOTOS';
+  }
+
+  function openPhotoModal(pid) {
+    photoPassenger.value = pid;
+    photoModal.classList.add('open');
+    photoModal.setAttribute('aria-hidden', 'false');
+    document.getElementById('extra-photos').focus();
+  }
+
+  document.getElementById('photo-close').onclick = closePhotoModal;
+  document.getElementById('photo-cancel').onclick = closePhotoModal;
+  photoModal.onclick = e => { if (e.target === photoModal) closePhotoModal(); };
+
+  photoForm.onsubmit = async function(e) {
+    e.preventDefault();
+    const files = document.getElementById('extra-photos').files;
+    if (!files.length) {
+      photoStatus.textContent = 'Select at least one face photo.';
+      photoStatus.className = 'enroll-status err';
+      return;
+    }
+    if (files.length > 5) {
+      photoStatus.textContent = 'Select a maximum of 5 photos.';
+      photoStatus.className = 'enroll-status err';
+      return;
+    }
+
+    const pid = photoPassenger.value;
+    photoSubmit.disabled = true;
+    photoSubmit.textContent = 'ADDING…';
+    photoStatus.textContent = 'Saving photos and updating recognition…';
+    photoStatus.className = 'enroll-status';
+
+    try {
+      const response = await fetch('/api/passengers/' + encodeURIComponent(pid) + '/photos', {
+        method: 'POST',
+        body: new FormData(photoForm)
+      });
+      const data = await response.json();
+      if (!response.ok || !data.ok) throw new Error(data.error || 'Could not add photos.');
+      photoStatus.textContent = data.photos.length + ' photo(s) added successfully.';
+      photoStatus.className = 'enroll-status ok';
+      showToast('✓ Photos added for ' + data.passenger, 'board');
+      setTimeout(closePhotoModal, 700);
+    } catch (err) {
+      photoStatus.textContent = err.message;
+      photoStatus.className = 'enroll-status err';
+      photoSubmit.disabled = false;
+      photoSubmit.textContent = 'ADD PHOTOS';
+    }
+  }
 
   // ══ BUTTON WIRING — direct getElementById, no delegation needed ══
   (function wireButtons() {
@@ -893,7 +986,7 @@ const MAX_BAL   = 200;
       const trips     = tripCounts[pid] || 0;
       const spent     = passengerRev[pid] || 0;
       return `<div class="${cardCls}">
-        <div class="w-row1"><div class="w-pid">${pid}</div><div class="w-chip ${chipCls}">${chipTxt}</div></div>
+        <div class="w-row1"><div class="w-pid">${pid}</div><div style="display:flex;align-items:center;gap:6px"><button class="enroll-btn" type="button" onclick="openPhotoModal(${JSON.stringify(pid)})">＋ PHOTOS</button><div class="w-chip ${chipCls}">${chipTxt}</div></div></div>
         <div class="w-row2">
           <div class="${balCls}${flash}">₹${bal}</div>
           <div class="w-meta"><div class="w-trips">${trips} trip${trips!==1?'s':''}</div><div class="w-spent">₹${spent} spent</div></div>
