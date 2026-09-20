@@ -420,7 +420,7 @@ body::after{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
           <div class="live-chip"><span class="live-dot"></span>ONLINE</div>
           <div class="clock-display" id="clock">--:--:--</div>
         </div>
-        <button class="session-exit" type="button" onclick="window.location.assign(new URL(['l','o','g','o','u','t'].join(''), window.location.href).pathname)" aria-label="End current session">↪ EXIT</button>
+        <a class="session-exit" href="/logout" aria-label="Log out of FaceFare">↪ LOGOUT</a>
       </div>
     </div>
   </header>
