@@ -290,6 +290,16 @@ body::after{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
 /* ── Passenger enrollment modal ── */
 .enroll-btn{font-family:var(--mono);font-size:.58rem;font-weight:700;letter-spacing:.08em;padding:5px 8px;border-radius:7px;border:1px solid rgba(56,189,248,.3);background:rgba(56,189,248,.08);color:var(--cyan);cursor:pointer}
 .enroll-btn:hover{background:rgba(56,189,248,.16);border-color:var(--cyan)}
+.add-passenger-btn{display:inline-flex;align-items:center;gap:7px;padding:7px 13px;border-radius:9px;
+  border:1px solid rgba(56,189,248,.55);background:linear-gradient(135deg,rgba(14,165,233,.28),rgba(56,189,248,.12));
+  color:#e2f0ff;font-family:var(--mono);font-size:.62rem;font-weight:800;letter-spacing:.1em;
+  cursor:pointer;box-shadow:0 0 18px rgba(56,189,248,.14),inset 0 0 14px rgba(56,189,248,.05);
+  transition:transform .18s ease,box-shadow .18s ease,border-color .18s ease,background .18s ease;white-space:nowrap}
+.add-passenger-btn:hover{transform:translateY(-1px);border-color:var(--cyan);
+  background:linear-gradient(135deg,rgba(14,165,233,.36),rgba(56,189,248,.18));
+  box-shadow:0 0 24px rgba(56,189,248,.28),inset 0 0 16px rgba(56,189,248,.08)}
+.add-passenger-btn:active{transform:translateY(0) scale(.98)}
+.add-passenger-icon{font-size:.9rem;line-height:1}
 .enroll-modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.72);backdrop-filter:blur(8px);z-index:2000;align-items:center;justify-content:center;padding:20px}
 .enroll-modal.open{display:flex}
 .enroll-card{width:min(520px,100%);background:var(--s1);border:1px solid var(--border2);border-radius:var(--r);box-shadow:0 20px 70px rgba(0,0,0,.6);overflow:hidden}
@@ -505,7 +515,9 @@ body::after{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
         <div class="panel-head">
           <div class="ph-title"><span class="ph-dot" style="background:var(--green)"></span>WALLET BALANCES</div>
           <div style="display:flex;align-items:center;gap:7px">
-            <button class="enroll-btn" id="btn-add-passenger" type="button">＋ ADD</button>
+            <button class="add-passenger-btn" id="btn-add-passenger" type="button" title="Add a new passenger">
+              <span class="add-passenger-icon">＋</span><span>ADD PASSENGER</span>
+            </button>
             <span style="font-family:var(--mono);font-size:.6rem;color:var(--muted)" id="wallet-total">₹0 total</span>
           </div>
         </div>
