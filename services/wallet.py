@@ -8,6 +8,8 @@
 # AND persisted to the database, so they survive an app restart.
 # ─────────────────────────────────────────────────────────────────
 
+import math
+
 from database.models import change_balance as _change_balance
 
 
@@ -34,6 +36,7 @@ def _valid_amount(amount: int | float) -> bool:
     return (
         isinstance(amount, (int, float))
         and not isinstance(amount, bool)
+        and math.isfinite(amount)
         and amount > 0
     )
 
