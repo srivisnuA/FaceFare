@@ -39,5 +39,6 @@ def exit_bus(session_state: dict, passenger_id: str) -> list:
 
     if passenger_id in onboard:
         onboard.remove(passenger_id)
+    session_state.get("boarding_stop", {}).pop(passenger_id, None)
 
     return onboard

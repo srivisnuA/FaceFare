@@ -9,3 +9,5 @@ __pycache__/
 logs/
 assets/known_faces/
 data/
+.venv/
+demo-data/

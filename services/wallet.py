@@ -8,9 +8,12 @@
 # AND persisted to the database, so they survive an app restart.
 # ─────────────────────────────────────────────────────────────────
 
-import math
+import threading
+from services.money import to_cents
 
 from database.models import change_balance as _change_balance
+
+_wallet_lock = threading.RLock()
 
 
 def _get(passengers: dict, pid: str) -> int | float:
@@ -33,12 +36,10 @@ def _set(passengers: dict, pid: str, amount: int | float):
 
 def _valid_amount(amount: int | float) -> bool:
     """Return True only for strictly positive numeric amounts."""
-    return (
-        isinstance(amount, (int, float))
-        and not isinstance(amount, bool)
-        and math.isfinite(amount)
-        and amount > 0
-    )
+    try:
+        return to_cents(amount) > 0
+    except ValueError:
+        return False
 
 
 def deduct_balance(passengers: dict, pid: str, amount: int | float) -> bool:
@@ -46,12 +47,12 @@ def deduct_balance(passengers: dict, pid: str, amount: int | float) -> bool:
     if not _valid_amount(amount) or pid not in passengers:
         return False
 
-    new_balance = _change_balance(pid, -amount)
-    if new_balance is None:
-        return False
-
-    _set(passengers, pid, new_balance)
-    return True
+    with _wallet_lock:
+        new_balance = _change_balance(pid, -amount)
+        if new_balance is None:
+            return False
+        _set(passengers, pid, new_balance)
+        return True
 
 
 def top_up(passengers: dict, pid: str, amount: int | float) -> bool:
@@ -59,6 +60,9 @@ def top_up(passengers: dict, pid: str, amount: int | float) -> bool:
     if not _valid_amount(amount) or pid not in passengers:
         return False
 
-    new_balance = _change_balance(pid, amount)
-    _set(passengers, pid, new_balance)
-    return True
+    with _wallet_lock:
+        new_balance = _change_balance(pid, amount)
+        if new_balance is None:
+            return False
+        _set(passengers, pid, new_balance)
+        return True

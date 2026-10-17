@@ -1,4 +1,3 @@
-from deepface import DeepFace
 import numpy as np
 import os
 import re
@@ -51,6 +50,9 @@ def load_known_faces():
         known_names.clear()
 
         files = list(_face_files())
+        if not files:
+            return
+        from deepface import DeepFace
         for path, name in files:
             try:
                 embedding = DeepFace.represent(
@@ -74,6 +76,7 @@ def recognize_face(frame):
         return "No passenger detected"
 
     try:
+        from deepface import DeepFace
         embedding = DeepFace.represent(
             img_path=frame,
             model_name="Facenet",

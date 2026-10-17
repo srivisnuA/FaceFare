@@ -6,6 +6,7 @@
 
 import cv2
 import os
+import threading
 
 _MODEL_DIR = os.path.join(os.path.dirname(__file__), "models")
 _PROTOTXT = os.path.join(_MODEL_DIR, "deploy.prototxt")
@@ -14,6 +15,7 @@ _WEIGHTS = os.path.join(_MODEL_DIR, "res10_300x300.caffemodel")
 CONFIDENCE_THRESHOLD = 0.6
 
 _net = None
+_net_lock = threading.Lock()
 
 
 def _get_net():
@@ -51,9 +53,10 @@ def detect_faces(frame):
         (104.0, 177.0, 123.0),
     )
 
-    net = _get_net()
-    net.setInput(blob)
-    detections = net.forward()
+    with _net_lock:
+        net = _get_net()
+        net.setInput(blob)
+        detections = net.forward()
 
     boxes = []
     for i in range(detections.shape[2]):

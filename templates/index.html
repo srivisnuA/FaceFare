@@ -336,6 +336,37 @@ body::after{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
 .enroll-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:4px}
 .enroll-status{min-height:18px;font-family:var(--mono);font-size:.62rem;color:var(--muted)}
 .enroll-status.ok{color:var(--green)} .enroll-status.err{color:var(--red)}
+/* Keep controls and wallets usable in narrow windows as well as wide displays. */
+:root{--muted:#7d9cb8}
+.app,.main-grid > *,.metrics > *,.chart-row > *,.analytics-row > *{min-width:0}
+.w-row1,.w-row1 > div:last-child,.tb-right{flex-wrap:wrap;gap:6px}
+.ctrl-bar{flex-wrap:wrap}
+.panel-body select{padding:8px;background:var(--s2);color:var(--text);border:1px solid var(--border3);border-radius:6px}
+.panel-body p{margin:8px 0;line-height:1.5}
+button:focus-visible,select:focus-visible,a:focus-visible{outline:2px solid var(--cyan);outline-offset:3px}
+button:disabled{opacity:.5;cursor:not-allowed}
+@media(max-width:1250px){
+  .main-grid{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+  .wallet-col{grid-column:1/-1}
+  .wallet-list{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}
+  .metrics{grid-template-columns:repeat(3,minmax(0,1fr))}
+}
+@media(max-width:800px){
+  .main-grid,.analytics-row{grid-template-columns:minmax(0,1fr)}
+  .wallet-list{grid-template-columns:minmax(0,1fr)}
+  .topbar{flex-wrap:wrap;gap:12px}
+  .cam-viewport{min-height:180px}
+  .fare-strip{gap:12px;flex-wrap:wrap}
+  .log-scroll{overflow-x:auto}
+  .ph-title{letter-spacing:.08em;font-size:.72rem}
+}
+@media(max-width:480px){
+  .app{padding:8px}
+  .metrics{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .chart-row{grid-template-columns:minmax(0,1fr)}
+  .mc{padding:12px}
+  .mc-label,.mc-sub{font-size:.7rem}
+}
 </style>
 </head>
 <body>
@@ -428,7 +459,7 @@ body::after{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
           <div class="live-chip"><span class="live-dot"></span>ONLINE</div>
           <div class="clock-display" id="clock">--:--:--</div>
         </div>
-        <a class="session-exit" href="/logout" aria-label="Log out of FaceFare">↪ LOGOUT</a>
+        <form method="post" action="/logout"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="session-exit" type="submit">↪ LOGOUT</button></form>
       </div>
     </div>
   </header>
@@ -461,7 +492,7 @@ body::after{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
           <div class="bracket bl"></div><div class="bracket br"></div>
           <div class="cam-placeholder" id="cam-placeholder">
             <div class="big-icon">📷</div>
-            <div>Press START CAMERA to begin</div>
+            <div>{{ 'Use the simulation controls below' if demo_mode else 'Press CAMERA to begin' }}</div>
           </div>
           <video id="browser-camera" autoplay playsinline muted style="display:none;width:100%;height:100%;object-fit:cover"></video>
           <img id="cam-feed" class="cam-feed" style="display:none" alt="feed">
@@ -475,6 +506,15 @@ body::after{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
           <button class="ctrl-btn blue"   id="btn-next">▶ NEXT</button>
           <button class="ctrl-btn yellow" id="btn-cam">▶ CAMERA</button>
         </div>
+        {% if demo_mode %}
+        <div class="panel-body" style="border-top:1px solid var(--border)">
+          <p>Simulation mode · synthetic scans, real SQLite wallet transactions</p>
+          <label for="demo-passenger">Passenger</label>
+          <select id="demo-passenger">{% for pid in wallets %}<option value="{{ pid }}">{{ pid }}</option>{% endfor %}</select>
+          <button class="ctrl-btn green" id="demo-scan" type="button">SIMULATE SCAN</button>
+          <p id="demo-result" role="status">Choose ENTRY, scan a passenger, advance stops, choose EXIT and scan again.</p>
+        </div>
+        {% endif %}
       </div>
 
       <div class="panel" style="flex-shrink:0">
@@ -601,6 +641,22 @@ const BASE_FARE = {{ base_fare }};
 const PER_STOP  = {{ per_stop_rate }};
 const MAX_BAL   = 200;
 const CSRF_TOKEN = {{ csrf_token | tojson }};
+const DEMO_MODE = {{ demo_mode | tojson }};
+const demoScan = document.getElementById('demo-scan');
+if (demoScan) demoScan.onclick = async () => {
+  demoScan.disabled = true;
+  const result = document.getElementById('demo-result');
+  try {
+    const response = await fetch('/api/demo/scan', {
+      method: 'POST', headers: {'Content-Type':'application/json', 'X-CSRF-Token':CSRF_TOKEN},
+      body: JSON.stringify({passenger:document.getElementById('demo-passenger').value})
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Scan failed');
+    result.textContent = data.event ? data.event.passenger + ': ' + data.event.event + ' at ' + data.event.stop : 'No state change: already boarded or not onboard.';
+  } catch (error) { result.textContent = error.message; }
+  finally { demoScan.disabled = false; }
+};
 const INITIAL_WALLETS = {{ wallets | tojson }};
 
 // ── Init immediately — script is at end of body, DOM is ready ──
@@ -976,7 +1032,7 @@ const INITIAL_WALLETS = {{ wallets | tojson }};
       body: JSON.stringify({ action })
     })
     .then(r => r.json())
-    .then(d => console.log('[Control]', action, d))
+    .then(d => { if (!d.ok) showToast(d.error || 'Control failed', 'declined'); })
     .catch(e => { console.error('[Control] fetch failed:', e); showToast('Control failed: ' + e.message, 'declined'); });
   }
 
@@ -1068,6 +1124,7 @@ const INITIAL_WALLETS = {{ wallets | tojson }};
   }
 
   function toggleCamera() {
+    if (DEMO_MODE) return;
     if (camOn) {
       stopBrowserCamera();
       setCamUI(false);
@@ -1216,8 +1273,8 @@ const INITIAL_WALLETS = {{ wallets | tojson }};
       updateMetrics(data);
       updateModeUI(data.mode);
       updateOnboard(data.onboard);
-      updateWallets(data.wallets, data.onboard);
       updateLogs(data.logs);
+      updateWallets(data.wallets, data.onboard);
       updateRoute(data.current_stop);
       updateRecog(data.recognized || []);
       updateCharts(data);
@@ -1252,7 +1309,7 @@ const INITIAL_WALLETS = {{ wallets | tojson }};
     if (btn) {
       btn.textContent = running ? '⏹ STOP' : '▶ CAMERA';
       btn.className   = running ? 'ctrl-btn cam-live' : 'ctrl-btn yellow';
-      btn.disabled    = false;
+      btn.disabled    = DEMO_MODE;
     }
     if (vp) vp.classList.toggle('active', running);
     var feed = document.getElementById('cam-feed');
