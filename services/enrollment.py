@@ -35,8 +35,10 @@ def normalize_passenger_id(raw_pid: str) -> str:
         raise ValueError("Passenger name is required")
     if len(pid) > MAX_PASSENGER_ID_LENGTH:
         raise ValueError("Passenger name is too long")
-    if pid in UNKNOWN_IDENTITIES:
+    if pid.casefold() in {name.casefold() for name in UNKNOWN_IDENTITIES}:
         raise ValueError("This passenger name is reserved")
+    if pid.upper() in {"CON", "PRN", "AUX", "NUL", *(f"COM{i}" for i in range(1, 10)), *(f"LPT{i}" for i in range(1, 10))}:
+        raise ValueError("This passenger name is reserved by the filesystem")
     if not _PASSENGER_ID_PATTERN.fullmatch(pid):
         raise ValueError(
             "Passenger name may contain only letters, numbers, spaces, "
@@ -134,10 +136,10 @@ def save_passenger_photos(pid: str, files) -> list[str]:
     """Save uploaded image files as <pid>1.jpg, <pid>2.jpg, etc."""
     pid = normalize_passenger_id(pid)
 
+    files = list(files)
     if not files:
         raise ValueError("At least one photo is required")
 
-    files = list(files)
     if len(files) > MAX_PHOTOS_PER_REQUEST:
         raise ValueError(
             f"A maximum of {MAX_PHOTOS_PER_REQUEST} photos can be uploaded at once"

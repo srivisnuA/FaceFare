@@ -4,6 +4,9 @@
 # ─────────────────────────────────────────────────────────────────
 
 
+from services.money import to_cents, from_cents
+
+
 def calculate_fare(
     distance: int,
     base_fare: int = 10,
@@ -27,4 +30,7 @@ def calculate_fare(
     if base_fare < 0 or per_stop_rate < 0:
         raise ValueError("fare values cannot be negative")
 
-    return base_fare + (distance * per_stop_rate)
+    cents = to_cents(base_fare) + distance * to_cents(per_stop_rate)
+    result = from_cents(cents)
+    to_cents(result)
+    return result

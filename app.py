@@ -19,9 +19,12 @@ from flask import Flask, render_template, jsonify, request, redirect, url_for, s
 from flask_socketio import SocketIO, emit
 
 from vision.camera import open_camera
-from vision.recognition import recognize_face, load_known_faces
+from vision.recognition import recognize_face, load_known_faces as _load_known_faces
 from vision.face_detector import detect_faces
 from database.models import (
+    init_db,
+    edit_passenger as persist_passenger_edit,
+    get_transactions,
     get_passengers,
     get_all_balances,
     add_passenger,
@@ -33,10 +36,16 @@ from services.trip_manager import board, exit_bus
 from services.enrollment import normalize_passenger_id, passenger_directory, save_passenger_photos, ENROLLMENT_LOCK
 from services.wallet import deduct_balance
 from services.fare_engine import calculate_fare
+from services.money import to_cents, from_cents
 from services.logger import log_transaction
-from security.auth import login_required, is_authenticated, check_password
+from security.auth import login_required, is_authenticated, check_password, start_session, end_session
 from security.privacy import blur_face, is_enrolled_passenger
-from config import SECRET_KEY, BUS_STOPS, BASE_FARE, PER_STOP_RATE
+from config import SECRET_KEY, BUS_STOPS, BASE_FARE, PER_STOP_RATE, DEMO_MODE
+
+
+def load_known_faces():
+    if not DEMO_MODE:
+        _load_known_faces()
 
 # ─────────────────────────────────────────────
 # App + SocketIO
@@ -73,7 +82,8 @@ socketio = SocketIO(
 # Shared state
 # ─────────────────────────────────────────────
 
-state_lock = threading.Lock()
+state_lock = threading.RLock()
+socket_clients = {}
 
 state = {
     "mode":          "ENTRY",
@@ -84,12 +94,14 @@ state = {
     "revenue":       0,
 }
 
+init_db()
 passengers = get_passengers()
 
 # Load enrolled face embeddings when the server starts. Without this,
 # recognize_face() has no reference embeddings until a passenger is added/edited.
 try:
-    load_known_faces()
+    if not DEMO_MODE:
+        load_known_faces()
 except Exception as exc:
     print(f"[Recognition] Startup load failed: {exc}")
 
@@ -112,7 +124,7 @@ def _safe_next_url(target):
         return url_for("index")
 
     parsed = urlparse(target)
-    if parsed.scheme or parsed.netloc or not target.startswith("/"):
+    if parsed.scheme or parsed.netloc or not target.startswith("/") or target.startswith("//") or "\\" in target or any(ord(c) < 32 for c in target):
         return url_for("index")
 
     return target
@@ -131,11 +143,34 @@ def csrf_protect(view_func):
     """Require the session's CSRF token for authenticated state changes."""
     @wraps(view_func)
     def wrapped(*args, **kwargs):
-        token = request.headers.get("X-CSRF-Token", "")
-        if not token or not compare_digest(token, _csrf_token()):
+        token = request.headers.get("X-CSRF-Token", "") or request.form.get("csrf_token", "")
+        if not token or not compare_digest(token.encode("utf-8"), _csrf_token().encode("utf-8")):
             return jsonify({"ok": False, "error": "Invalid CSRF token."}), 403
         return view_func(*args, **kwargs)
     return wrapped
+
+
+def serialized_state(view_func):
+    """Keep passenger management consistent with camera and demo trip events."""
+    @wraps(view_func)
+    def wrapped(*args, **kwargs):
+        with state_lock:
+            return view_func(*args, **kwargs)
+    return wrapped
+
+
+@app.before_request
+def validate_json_object():
+    if request.method in {"POST", "PATCH", "DELETE"} and request.is_json:
+        if not isinstance(request.get_json(silent=True), dict):
+            return jsonify({"ok": False, "error": "JSON body must be an object."}), 400
+
+
+@app.after_request
+def private_response(response):
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    return response
 
 
 # ─────────────────────────────────────────────
@@ -165,6 +200,8 @@ def build_snapshot(recognized=None):
 # ─────────────────────────────────────────────
 
 def handle_passenger(pid, current_stop):
+    if pid not in passengers:
+        raise ValueError("Passenger is not enrolled")
     mode = state["mode"]
 
     if mode == "ENTRY":
@@ -225,6 +262,8 @@ def _process_frame(frame):
         boxes = detect_faces(frame)
     except Exception as exc:
         print(f"[Camera] Detection error: {exc}")
+        # No reliable boxes means no reliable redaction; obscure the entire frame.
+        frame = np.zeros_like(frame)
         boxes = []
 
     recognized = []
@@ -268,6 +307,7 @@ def _process_frame(frame):
 
         except Exception as exc:
             print(f"[Camera] Face processing error: {exc}")
+            frame[y:y+h, x:x+w] = 0
             continue
 
     ok, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
@@ -367,18 +407,28 @@ def camera_thread():
 def login():
     error = None
     if request.method == "POST":
+        token = request.form.get("csrf_token", "")
+        if not compare_digest(token.encode("utf-8"), _csrf_token().encode("utf-8")):
+            return render_template("login.html", error="Session expired. Try again.", csrf_token=_csrf_token()), 403
         password = request.form.get("password", "")
         if check_password(password):
-            session["authenticated"] = True
+            start_session()
             next_url = _safe_next_url(request.args.get("next"))
             return redirect(next_url)
         error = "Incorrect password."
-    return render_template("login.html", error=error)
+    return render_template("login.html", error=error, csrf_token=_csrf_token())
 
 
-@app.route("/logout")
+@app.route("/logout", methods=["POST"])
+@login_required
+@csrf_protect
 def logout():
-    session.pop("authenticated", None)
+    auth_id = session.get("auth_id")
+    end_session()
+    with state_lock:
+        stale = [sid for sid, token in socket_clients.items() if token == auth_id]
+    for sid in stale:
+        socketio.server.disconnect(sid, namespace="/")
     return redirect(url_for("login"))
 
 
@@ -392,12 +442,14 @@ def index():
         per_stop_rate = PER_STOP_RATE,
         csrf_token    = _csrf_token(),
         wallets       = get_all_balances(),
+        demo_mode     = DEMO_MODE,
     )
 
 
 @app.route("/api/passengers", methods=["POST"])
 @login_required
 @csrf_protect
+@serialized_state
 def create_passenger():
     """Create a passenger and save their enrolled face photos."""
     pid_raw = request.form.get("name", "")
@@ -407,8 +459,7 @@ def create_passenger():
     try:
         pid = normalize_passenger_id(pid_raw)
         initial_balance = float(balance_raw)
-        if not initial_balance >= 0:
-            raise ValueError("Initial balance must be non-negative")
+        to_cents(initial_balance)
 
         if pid in passengers:
             return jsonify({
@@ -454,6 +505,7 @@ def create_passenger():
 @app.route("/api/passengers/<path:pid>", methods=["PATCH"])
 @login_required
 @csrf_protect
+@serialized_state
 def edit_passenger(pid):
     """Edit a passenger name and/or wallet balance."""
     with ENROLLMENT_LOCK:
@@ -467,7 +519,9 @@ def edit_passenger(pid):
             new_pid = normalize_passenger_id(data.get("name", old_pid))
 
             try:
-                new_balance = float(data.get("balance", passengers[old_pid]["balance"]))
+                new_balance = data.get("balance") if "balance" in data else None
+                if "balance" in data:
+                    to_cents(new_balance)
             except (TypeError, ValueError):
                 return jsonify({"ok": False, "error": "Balance must be a number."}), 400
 
@@ -485,9 +539,7 @@ def edit_passenger(pid):
                 moved_dir = True
 
             try:
-                if new_pid != old_pid:
-                    rename_passenger(old_pid, new_pid)
-                update_balance(new_pid, new_balance)
+                new_balance = persist_passenger_edit(old_pid, new_pid, new_balance)
             except Exception:
                 if moved_dir and os.path.exists(new_dir) and not os.path.exists(old_dir):
                     os.rename(new_dir, old_dir)
@@ -520,6 +572,7 @@ def edit_passenger(pid):
 @app.route("/api/passengers/<path:pid>", methods=["DELETE"])
 @login_required
 @csrf_protect
+@serialized_state
 def remove_passenger(pid):
     """Delete a passenger, wallet record, and enrolled face directory."""
     with ENROLLMENT_LOCK:
@@ -570,6 +623,7 @@ def remove_passenger(pid):
 @app.route("/api/passengers/<path:pid>/photos", methods=["POST"])
 @login_required
 @csrf_protect
+@serialized_state
 def add_passenger_photos(pid):
     """Add face photos to an existing passenger and reload recognition."""
     try:
@@ -598,6 +652,7 @@ def add_passenger_photos(pid):
 @app.route("/api/passengers/<path:pid>/balance", methods=["PATCH"])
 @login_required
 @csrf_protect
+@serialized_state
 def update_passenger_balance(pid):
     """Update an existing passenger's wallet balance from the dashboard."""
     try:
@@ -611,7 +666,7 @@ def update_passenger_balance(pid):
             return jsonify({"ok": False, "error": "Balance is required."}), 400
 
         try:
-            new_balance = float(data["balance"])
+            new_balance = from_cents(to_cents(data["balance"]))
         except (TypeError, ValueError):
             return jsonify({"ok": False, "error": "Balance must be a number."}), 400
 
@@ -634,6 +689,7 @@ def update_passenger_balance(pid):
 
 @app.route("/api/passengers/<path:pid>/photos/<path:filename>", methods=["GET"])
 @login_required
+@serialized_state
 def serve_passenger_photo(pid, filename):
     """Serve one enrolled face photo to the authenticated management UI."""
     try:
@@ -647,8 +703,6 @@ def serve_passenger_photo(pid, filename):
 
         stem, extension = os.path.splitext(filename)
         if extension.lower() not in {".jpg", ".jpeg", ".png"}:
-            return jsonify({"ok": False, "error": "Invalid photo filename."}), 400
-        if not re.fullmatch(rf"{re.escape(pid)}\d+", stem):
             return jsonify({"ok": False, "error": "Invalid photo filename."}), 400
 
         directory = passenger_directory(pid)
@@ -665,6 +719,7 @@ def serve_passenger_photo(pid, filename):
 
 @app.route("/api/passengers/<path:pid>/photos", methods=["GET"])
 @login_required
+@serialized_state
 def list_passenger_photos(pid):
     """Return enrolled face-photo filenames for an existing passenger."""
     try:
@@ -699,6 +754,7 @@ def list_passenger_photos(pid):
 @app.route("/api/passengers/<path:pid>/photos", methods=["DELETE"])
 @login_required
 @csrf_protect
+@serialized_state
 def delete_passenger_photos(pid):
     """Delete selected face photos while keeping at least one enrolled image."""
     with ENROLLMENT_LOCK:
@@ -731,8 +787,6 @@ def delete_passenger_photos(pid):
 
                 stem, extension = os.path.splitext(filename)
                 if extension.lower() not in {".jpg", ".jpeg", ".png"}:
-                    return jsonify({"ok": False, "error": "Invalid photo filename."}), 400
-                if not re.fullmatch(rf"{re.escape(pid)}\d+", stem):
                     return jsonify({"ok": False, "error": "Invalid photo filename."}), 400
                 if filename not in current_files:
                     return jsonify({"ok": False, "error": f"Photo not found: {filename}"}), 404
@@ -768,6 +822,7 @@ def delete_passenger_photos(pid):
 @app.route("/control", methods=["POST"])
 @login_required
 @csrf_protect
+@serialized_state
 def control():
     data = request.get_json(silent=True) or {}
     action = data.get("action", "")
@@ -784,11 +839,38 @@ def control():
             if state["current_stop"] < len(BUS_STOPS) - 1:
                 state["current_stop"] += 1
         elif action == "prev_stop":
+            if state["onboard"]:
+                return jsonify({"ok": False, "error": "Exit onboard passengers before reversing the route."}), 409
             if state["current_stop"] > 0:
                 state["current_stop"] -= 1
 
     socketio.emit("update", build_snapshot())
     return jsonify({"ok": True})
+
+
+@app.get("/api/passengers/<path:pid>/transactions")
+@login_required
+def wallet_transactions(pid):
+    return jsonify({"transactions": get_transactions(pid)})
+
+
+@app.post("/api/demo/scan")
+@login_required
+@csrf_protect
+@serialized_state
+def demo_scan():
+    if not DEMO_MODE:
+        return jsonify({"ok": False, "error": "Demo mode is disabled."}), 404
+    data = request.get_json(silent=True) or {}
+    pid = data.get("passenger")
+    if not isinstance(pid, str) or pid not in passengers:
+        return jsonify({"ok": False, "error": "Choose an enrolled passenger."}), 400
+    event = handle_passenger(pid, state["current_stop"])
+    if event:
+        state["logs"].append(event)
+    snapshot = build_snapshot()
+    socketio.emit("update", snapshot)
+    return jsonify({"ok": True, "event": event, "snapshot": snapshot})
 
 
 # ─────────────────────────────────────────────
@@ -800,6 +882,8 @@ def on_connect():
     if not is_authenticated():
         print(f"[SocketIO] Rejected unauthenticated client: {request.sid}")
         return False
+    with state_lock:
+        socket_clients[request.sid] = session.get("auth_id")
     print(f"[SocketIO] Client connected: {request.sid}")
     emit("update", build_snapshot())
     with camera_lock:
@@ -809,6 +893,8 @@ def on_connect():
 
 @socketio.on("disconnect")
 def on_disconnect():
+    with state_lock:
+        socket_clients.pop(request.sid, None)
     print(f"[SocketIO] Client disconnected: {request.sid}")
 
 
@@ -818,6 +904,10 @@ def on_browser_frame(data, ack=None):
     if not is_authenticated():
         if callable(ack):
             ack({"ok": False, "error": "Authentication required."})
+        return
+
+    if DEMO_MODE:
+        emit("camera_error", {"msg": "Camera is disabled in simulation mode."})
         return
 
     try:
@@ -841,6 +931,9 @@ def on_browser_frame(data, ack=None):
 @socketio.on("start_camera")
 def on_start_camera():
     global camera_running
+    if DEMO_MODE:
+        emit("camera_error", {"msg": "Camera is disabled in simulation mode."})
+        return
     if not is_authenticated():
         print("[SocketIO] Rejected unauthenticated start_camera")
         return
@@ -879,11 +972,11 @@ def on_stop_camera():
 
 if __name__ == "__main__":
     print("=" * 50)
-    print("  FaceFare  →  http://localhost:5000")
+    print(f"  FaceFare -> http://localhost:{os.environ.get('PORT', '5000')}")
     print("=" * 50)
     socketio.run(
         app,
-        host="0.0.0.0",
+        host=os.environ.get("FACEFARE_HOST", "127.0.0.1"),
         port=int(os.environ.get("PORT", 5000)),
         debug=False,
         use_reloader=False,

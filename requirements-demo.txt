@@ -1,0 +1,6 @@
+# Camera-free demo, API and service tests. No TensorFlow/model downloads.
+Flask>=3.1,<4
+Flask-SocketIO>=5.5,<6
+numpy>=1.26,<2
+opencv-python-headless>=4.8,<4.12
+Pillow>=12.1.1,<13

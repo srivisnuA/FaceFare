@@ -76,6 +76,17 @@ class EnrollmentTests(unittest.TestCase):
 
         self.assertEqual(enrollment.next_photo_index("praveen"), 5)
 
+    def test_failed_batch_removes_photos_already_written(self):
+        files = [FakeUpload("valid.png", image_bytes()), FakeUpload("bad.png", b"invalid")]
+        with self.assertRaises(ValueError):
+            enrollment.save_passenger_photos("demo", files)
+        self.assertEqual(os.listdir(enrollment.passenger_directory("demo")), [])
+
+    def test_unsafe_and_reserved_names_are_rejected(self):
+        for name in ["../outside", "unknown", "CON", "no face", "", "a/b"]:
+            with self.subTest(name=name), self.assertRaises(ValueError):
+                enrollment.normalize_passenger_id(name)
+
 
 if __name__ == "__main__":
     unittest.main()

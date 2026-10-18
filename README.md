@@ -4,6 +4,57 @@ FaceFare is a real-time face-recognition-based fare collection prototype for pub
 
 > **Project status:** Prototype / academic project. The current implementation is designed for local development and demonstration, not production deployment.
 
+## Camera-free quick start
+
+Use Python 3.10 or 3.11 in a virtual environment:
+
+```powershell
+python -m pip install -r requirements-demo.txt
+python -m unittest discover -s tests -v
+python demo.py
+$env:FACEFARE_DEMO = "1"
+$env:FACEFARE_DATA_DIR = "$PWD/demo-data"
+python app.py
+```
+
+Open http://127.0.0.1:5000 and use the local-development password `facefare123`.
+For Linux/macOS use `FACEFARE_DEMO=1 FACEFARE_DATA_DIR=./demo-data python app.py`.
+Choose ENTRY, simulate a scan, advance two stops, select EXIT and scan the same
+passenger: the fare is 20 and a wallet starting at 100 becomes 80. Repeated scans
+in the same mode do not create duplicate boardings or deductions. `python demo.py`
+executes this flow through the Flask test client in a temporary database and removes it.
+Simulation uses real trip and wallet code, but does not test face recognition.
+
+![Camera-free dashboard demonstration](docs/demo-dashboard.png)
+
+### Transaction and session guarantees
+
+- Wallet changes and ledger entries commit in one SQLite transaction. Concurrent
+  adjustments acquire `BEGIN IMMEDIATE`; insufficient funds write nothing.
+- Arithmetic and ledger values use integer cents. The existing REAL balance column
+  is retained for database compatibility. Fractional cents, booleans, non-finite
+  values and balances above 1 billion are rejected.
+- Optional operation IDs on `change_balance` make explicit retries idempotent.
+  This is a database API capability; camera events do not have durable event IDs.
+- Renaming and optionally changing a wallet are atomic, and ledger foreign keys
+  follow the name. Existing databases receive one opening ledger record per wallet,
+  without fabricated transaction history. Back up existing data before migration;
+  legacy fractional-cent/invalid balances require manual correction.
+- `/api/passengers/<pid>/transactions` exposes ledger rows to authenticated users.
+  Deleting a passenger also deletes their ledger rows (prototype privacy policy;
+  this is not an immutable financial audit trail).
+- Login/logout and mutations require CSRF tokens. Logout revokes the local session
+  and disconnects its sockets. Development signing keys are randomly generated.
+  Outside development, configure both password and signing key explicitly.
+- Passenger management is synchronized with trip state in one process. Run one
+  application worker. Trip state and session analytics remain in memory and reset
+  on restart; balances and ledger rows persist. Multi-worker coordination, durable
+  trip recovery, login throttling, encryption at rest and biometric consent/retention
+  controls remain production work.
+
+See [verification and limitations](docs/VERIFICATION.md). AI-assisted changes are
+documented in the PR; they should not be represented as independent authorship.
+
 ## Features
 
 - **Real-time face recognition** using OpenCV face detection and DeepFace/FaceNet-based recognition.
